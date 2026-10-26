@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TimeTracker</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="10" fill="var(--work)"/><path d="M11 5.5V11h4" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
+    <span>TimeTracker</span>
+  </div>
+  <nav class="tabs" id="nav">
+    <a href="#overview" data-view="overview">Overview</a>
+    <a href="#review" data-view="review">Review</a>
+    <a href="#rules" data-view="rules">Rules</a>
+    <a href="#settings" data-view="settings">Settings</a>
+  </nav>
+  <div class="live" id="live" title="What is being tracked right now">
+    <span class="dot"></span><span class="live-text">connecting</span>
+  </div>
+</header>
+
+<div class="rangebar" id="rangebar">
+  <div class="seg" id="rangeseg">
+    <button data-range="day">Day</button>
+    <button data-range="week">Week</button>
+    <button data-range="month">Month</button>
+  </div>
+  <div class="datenav">
+    <button class="icon" id="prev" title="Previous (←)">&#8249;</button>
+    <h1 class="datelabel" id="datelabel"></h1>
+    <button class="icon" id="next" title="Next (→)">&#8250;</button>
+    <button class="ghost" id="today">Today</button>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--work)"></i>Work</span>
+    <span><i style="background:var(--nonwork)"></i>Not work</span>
+    <span><i style="background:var(--afk)"></i>Away</span>
+  </div>
+  <details class="menu" id="export-menu">
+    <summary class="ghost">Export CSV</summary>
+    <div class="menu-items">
+      <a id="exp-windows" href="#" download>Windows in this range</a>
+      <a id="exp-days" href="#" download>Totals per day</a>
+      <a id="exp-segments" href="#" download>Every segment (timeline)</a>
+    </div>
+  </details>
+</div>
+
+<main id="view-overview" class="view">
+  <section class="hero-row">
+    <div class="hero card">
+      <div class="hero-label" id="hero-label">Worked today</div>
+      <div class="hero-value" id="hero-value">0h 00m</div>
+      <div class="hero-sub" id="hero-sub"></div>
+      <div class="meter" id="meter"><div class="meter-fill" id="meter-fill"></div><div class="meter-over" id="meter-over"></div></div>
+      <div id="hero-week" hidden>
+        <div class="hero-sub2"><span id="hero-week-text"></span><span id="hero-week-range"></span></div>
+        <div class="meter small"><div class="meter-fill" id="meter-week-fill"></div><div class="meter-over" id="meter-week-over"></div></div>
+      </div>
+    </div>
+    <div class="tiles">
+      <div class="tile"><div class="tile-label">Not work</div><div class="tile-value" id="t-nonwork">0m</div><div class="tile-sub" id="t-nonwork-sub"></div></div>
+      <div class="tile"><div class="tile-label">Away</div><div class="tile-value" id="t-afk">0m</div><div class="tile-sub" id="t-afk-sub">locked, asleep or idle</div></div>
+      <div class="tile"><div class="tile-label">At the computer</div><div class="tile-value" id="t-active">0m</div><div class="tile-sub" id="t-active-sub"></div></div>
+      <div class="tile"><div class="tile-label">Not tracked</div><div class="tile-value" id="t-untracked">0m</div><div class="tile-sub">tracker was not running</div></div>
+    </div>
+  </section>
+
+  <section class="card" id="tape-card">
+    <div class="card-head"><h2 id="chart-title">The day</h2><div class="head-right"><div class="seg small" id="chart-mode" hidden><button data-mode="kind" class="on">Work / Not work</button><button data-mode="cat">By category</button></div><span class="hint" id="chart-hint">Hover a block for details, click to change its category</span></div></div>
+    <div id="tape-wrap">
+      <div class="tape" id="tape"></div>
+      <div class="tape-axis" id="tape-axis"></div>
+    </div>
+    <div id="columns-wrap" hidden><svg id="columns" role="img" aria-label="Hours per day"></svg><div class="chart-legend" id="chart-legend" hidden></div></div>
+  </section>
+
+  <section class="two-col">
+    <div class="card">
+      <div class="card-head"><h2>Categories</h2><span class="hint">Share of tracked time</span></div>
+      <div class="cat-list" id="cat-list"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Top windows</h2><a class="hint" href="#review">Review all</a></div>
+      <div class="item-list" id="top-items"></div>
+    </div>
+  </section>
+</main>
+
+<main id="view-review" class="view" hidden>
+  <section class="card">
+    <div class="toolbar">
+      <input id="rv-search" type="search" placeholder="Filter by app or window title" autocomplete="off">
+      <div class="seg small" id="rv-kind">
+        <button data-kind="" class="on">All</button>
+        <button data-kind="work">Work</button>
+        <button data-kind="nonwork">Not work</button>
+        <button data-kind="afk">Away</button>
+        <button data-kind="default">Uncategorized</button>
+        <button data-kind="needs" title="No rule matched and at least the minutes below">Needs a rule</button>
+      </div>
+      <label class="minlabel">at least <input id="rv-min" type="number" min="0" max="600" value="0" class="short"> min</label>
+      <div class="seg small" id="rv-group">
+        <button data-group="title" class="on">By window</button>
+        <button data-group="app">By app</button>
+      </div>
+      <span class="hint" id="rv-count"></span>
+    </div>
+    <div class="table-wrap">
+      <table class="items" id="rv-table">
+        <thead><tr><th>App</th><th>Window title</th><th>Category</th><th class="num">Time</th><th>Share</th><th>Set by</th><th></th></tr></thead>
+        <tbody id="rv-body"></tbody>
+      </table>
+    </div>
+    <p class="empty" id="rv-empty" hidden>Nothing tracked in this range.</p>
+  </section>
+</main>
+
+<main id="view-rules" class="view" hidden>
+  <section class="card">
+    <div class="card-head"><h2>Try a window title</h2><span class="hint">See which rule would catch it</span></div>
+    <div class="toolbar">
+      <input id="try-app" type="text" placeholder="App, e.g. chrome.exe" autocomplete="off">
+      <input id="try-title" type="text" placeholder="Window title, e.g. Naruto episode 12 - Google Chrome" autocomplete="off" class="grow">
+    </div>
+    <div class="try-result" id="try-result">Type something above.</div>
+  </section>
+  <section class="two-col rules-cols">
+    <div class="card">
+      <div class="card-head"><h2>Rules</h2><div><button class="ghost" id="import-aw">Import ActivityWatch JSON</button> <button class="primary" id="add-rule">Add rule</button></div></div>
+      <p class="hint block">Checked top to bottom against the app name and the window title. The first match wins. Manual choices made in Review beat rules.</p>
+      <div id="broken-rules" class="warn" hidden></div>
+      <div class="table-wrap">
+        <table class="rules" id="rules-table">
+          <thead><tr><th></th><th>Pattern</th><th>Category</th><th>On</th><th></th></tr></thead>
+          <tbody id="rules-body"></tbody>
+        </table>
+      </div>
+      <input type="file" id="aw-file" accept=".json,application/json" hidden>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Categories</h2><button class="primary" id="add-cat">Add category</button></div>
+      <p class="hint block">A category counts as work, not work, or away. Use " > " in the name to nest, e.g. Work > Programming > SQL.</p>
+      <div class="cat-admin" id="cat-admin"></div>
+      <h3 class="sub">Manual choices</h3>
+      <p class="hint block">Exact windows you categorized by hand in Review.</p>
+      <div class="override-list" id="override-list"></div>
+    </div>
+  </section>
+</main>
+
+<main id="view-settings" class="view" hidden>
+  <form class="card settings" id="settings-form">
+    <div class="card-head"><h2>Tracking</h2></div>
+    <div class="field"><label for="s-day-start">Day starts at</label><input id="s-day-start" type="time" step="60"><span class="hint">Time before this belongs to the previous day. 04:00 keeps late nights in the same day.</span></div>
+    <div class="field"><label for="s-afk">Away after</label><div class="unit"><input id="s-afk" type="number" min="1" max="600"><span>minutes without mouse or keyboard</span></div><span class="hint">Locking the computer counts as away immediately. Everything else counts as being at the computer.</span></div>
+    <div class="field"><label for="s-target-h">Work day target</label><div class="unit"><input id="s-target-h" type="number" min="0" max="24" class="short"><span>h</span><input id="s-target-m" type="number" min="0" max="59" class="short"><span>min</span></div></div>
+    <div class="field check"><label><input id="s-media" type="checkbox"> Playing video or audio in the front window keeps me "at the computer"</label><span class="hint" style="padding-left:26px">Watching a film in Chrome without touching the mouse stays in the film's category instead of becoming away. Checked by sound coming from the front app or by the screen being kept awake.</span></div>
+    <div class="field check"><label><input id="s-calls" type="checkbox"> While the microphone is in use (a call), count the time as</label><div class="unit"><select id="s-calls-cat"></select></div><span class="hint" style="padding-left:26px">Meet in Chrome, Teams, Slack, Zoom: any app using the mic. A call never counts as away, whatever is on screen. Unchecked, the time goes to whichever window is in front.</span></div>
+    <div class="field"><label for="s-private">Incognito / private windows</label><select id="s-private">
+      <option value="hide">Record the time, hide the title</option>
+      <option value="skip">Do not record at all</option>
+      <option value="track">Track like any other window</option>
+    </select><span class="hint">Chrome Incognito, Edge InPrivate and Firefox private windows. Hidden titles are saved as "Private window" and count as not work by default (see the Private browsing category).</span></div>
+    <div class="field"><label>Work days</label><div class="unit weekdays" id="s-workdays">
+      <label><input type="checkbox" value="0"> Mon</label><label><input type="checkbox" value="1"> Tue</label><label><input type="checkbox" value="2"> Wed</label><label><input type="checkbox" value="3"> Thu</label><label><input type="checkbox" value="4"> Fri</label><label><input type="checkbox" value="5"> Sat</label><label><input type="checkbox" value="6"> Sun</label>
+    </div><span class="hint" id="s-workdays-hint"></span></div>
+
+    <div class="card-head"><h2>Notifications</h2></div>
+    <div class="field check"><label><input id="s-n-enabled" type="checkbox"> Show notifications</label></div>
+    <div class="field"><label for="s-n-before">Warn before the target</label><div class="unit"><input id="s-n-before" type="text" placeholder="30, 15, 5"><span>minutes left, comma separated</span></div></div>
+    <div class="field check"><label><input id="s-n-end" type="checkbox"> Tell me when the target is reached</label></div>
+    <div class="field check"><label><input id="s-n-over" type="checkbox"> Remind me about overtime every</label><div class="unit"><input id="s-n-over-every" type="number" min="1" max="600" class="short"><span>minutes of extra work</span></div></div>
+    <div class="field check"><label><input id="s-w-enabled" type="checkbox"> Weekly summary on</label><div class="unit"><select id="s-w-day"><option value="0">Monday</option><option value="1">Tuesday</option><option value="2">Wednesday</option><option value="3">Thursday</option><option value="4">Friday</option><option value="5">Saturday</option><option value="6">Sunday</option></select><span>at</span><input id="s-w-time" type="time" step="60"></div><span class="hint" style="padding-left:26px">Hours worked this week against the week target, plus not-work time.</span></div>
+    <div class="field"><label></label><button type="button" class="ghost" id="test-notify">Send a test notification</button></div>
+
+    <div class="card-head"><h2>App</h2></div>
+    <div class="field"><label for="s-port">Port</label><div class="unit"><input id="s-port" type="number" min="1024" max="65535"><span>takes effect after restart</span></div></div>
+    <div class="field"><label>Data folder</label><code id="s-data-dir"></code></div>
+    <div class="field"><label>Tracker</label><div><button type="button" class="ghost" id="pause-btn">Pause tracking</button> <button type="button" class="danger" id="quit-btn">Quit TimeTracker</button></div></div>
+    <div class="actions"><button type="submit" class="primary">Save settings</button><span id="settings-msg" class="hint"></span></div>
+  </form>
+</main>
+
+<div class="tooltip" id="tooltip" hidden></div>
+<dialog id="modal"><div id="modal-body"></div></dialog>
+<div class="toast" id="toast" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>
