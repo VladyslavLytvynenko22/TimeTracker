@@ -139,6 +139,12 @@ class App:
         color = body.get("color") or None
         if color and not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
             raise ApiError("color must be #rrggbb")
+        try:
+            target = int(body.get("target_min") or 0)
+        except (TypeError, ValueError):
+            raise ApiError("daily target must be minutes")
+        if not 0 <= target <= 1440:
+            raise ApiError("daily target must be between 0 and 1440 minutes")
         cid = body.get("id")
         if cid:
             old = self.db.query("SELECT path FROM categories WHERE id=?", (cid,))
@@ -146,7 +152,8 @@ class App:
                 raise ApiError("not found", 404)
             if old[0]["path"] in PROTECTED_CATEGORIES and path != old[0]["path"]:
                 raise ApiError("this category cannot be renamed")
-            self.db.execute("UPDATE categories SET path=?, kind=?, color=? WHERE id=?", (path, kind, color, cid))
+            self.db.execute("UPDATE categories SET path=?, kind=?, color=?, target_min=? WHERE id=?",
+                            (path, kind, color, target, cid))
             if old[0]["path"] != path:
                 prefix = old[0]["path"] + " > "
                 for r in self.db.query("SELECT id, path FROM categories WHERE path LIKE ?", (prefix.replace("%", "\\%") + "%",)):
@@ -155,7 +162,8 @@ class App:
         else:
             if self.db.query("SELECT 1 FROM categories WHERE path=?", (path,)):
                 raise ApiError("category already exists")
-            cur = self.db.execute("INSERT INTO categories(path, kind, color) VALUES(?,?,?)", (path, kind, color))
+            cur = self.db.execute("INSERT INTO categories(path, kind, color, target_min) VALUES(?,?,?,?)",
+                                  (path, kind, color, target))
             cid = cur.lastrowid
         self.changed()
         return {"id": cid}

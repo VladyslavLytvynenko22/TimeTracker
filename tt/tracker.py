@@ -247,7 +247,12 @@ class Tracker(threading.Thread):
         else:
             line = "%s worked, %s short of the %s target." % (fmt_minutes(work), fmt_minutes(target - work), fmt_minutes(target))
         self.db.set_setting("weekly_summary_sent", key)
-        self.notifier.send("Your week in numbers", "%s Not work: %s." % (line, fmt_minutes(res["totals"]["nonwork"])))
+        top = [c for c in res["categories"] if c["kind"] == "work"][:3]
+        top_line = ""
+        if top:
+            top_line = " Top: " + ", ".join("%s %s" % (c["path"].split(" > ")[-1], fmt_minutes(c["seconds"])) for c in top) + "."
+        self.notifier.send("Your week in numbers",
+                           "%s Not work: %s.%s" % (line, fmt_minutes(res["totals"]["nonwork"]), top_line))
 
     def _check_notifications(self, now):
         s = self.settings

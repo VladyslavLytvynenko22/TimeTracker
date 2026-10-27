@@ -51,6 +51,42 @@ def _split_by_day(s, e, day_start):
     return out
 
 
+def _active_span(rows, start, end, day_start, now):
+    span = {}
+    for r in rows:
+        if r["afk"]:
+            continue
+        s = max(r["start"], start)
+        e = min(r["end"], end)
+        if e <= s:
+            continue
+        for dd, ss, ee in _split_by_day(s, e, day_start):
+            cur = span.get(dd)
+            span[dd] = (ss, ee) if cur is None else (min(cur[0], ss), max(cur[1], ee))
+    for dd, (first, last) in list(span.items()):
+        _, dend = day_bounds(dd, day_start)
+        if dend > now:
+            span[dd] = (first, None)
+    return span
+
+
+def _awake_pieces(r, s, e, active_span, day_start):
+    if not r["afk"]:
+        return [(s, e)]
+    out = []
+    for dd, ss, ee in _split_by_day(s, e, day_start):
+        span = active_span.get(dd)
+        if span is None:
+            continue
+        first, last = span
+        ss = max(ss, first)
+        if last is not None:
+            ee = min(ee, last)
+        if ee > ss:
+            out.append((ss, ee))
+    return out
+
+
 def work_between(db, cat, start, end):
     total = 0.0
     for r in db.events_overlapping(start, end):
@@ -97,42 +133,49 @@ def compute(db, cat, kind, d, day_start, target_min, workdays=(0, 1, 2, 3, 4), n
     items = {}
     timeline = []
     tracked = 0.0
+    sleep = 0.0
+    active_span = _active_span(rows, start, end, day_start, now)
     for r in rows:
-        s = max(r["start"], start)
-        e = min(r["end"], end)
-        if e <= s:
+        rs = max(r["start"], start)
+        re_ = min(r["end"], end)
+        if re_ <= rs:
+            continue
+        pieces = _awake_pieces(r, rs, re_, active_span, day_start)
+        sleep += (re_ - rs) - sum(pe - ps for ps, pe in pieces)
+        if not pieces:
             continue
         c, source = cat.categorize(r["app"], r["title"], r["afk"], r["id"], r.get("call"))
-        dur = e - s
-        tracked += dur
-        totals[c.kind] += dur
-        for dd, ss, ee in _split_by_day(s, e, day_start):
-            if dd in days:
-                days[dd][c.kind] += ee - ss
-                dc = day_cats[dd]
-                dc[c.id] = dc.get(c.id, 0.0) + (ee - ss)
-        categories[c.id] = categories.get(c.id, 0.0) + dur
-        key = (r["app"], r["title"])
-        it = items.get(key)
-        if it is None:
-            it = {"app": r["app"], "title": r["title"], "seconds": 0.0, "count": 0,
-                  "category_id": c.id, "category": c.path, "kind": c.kind, "source": source, "first": s, "last": e}
-            items[key] = it
-        it["seconds"] += dur
-        it["count"] += 1
-        it["last"] = max(it["last"], e)
-        it["first"] = min(it["first"], s)
-        if source == "block" and it["source"] != "block":
-            it["source"] = "mixed"
-        if kind == "day":
-            blk = timeline[-1] if timeline else None
-            if blk and blk["category_id"] == c.id and s - blk["end"] <= 2.0 and blk["app"] == r["app"]:
-                blk["end"] = e
-                blk["ids"].append(r["id"])
-                blk["titles"][r["title"]] = blk["titles"].get(r["title"], 0.0) + dur
-            else:
-                timeline.append({"start": s, "end": e, "category_id": c.id, "category": c.path, "kind": c.kind,
-                                 "color": c.color, "app": r["app"], "ids": [r["id"]], "titles": {r["title"]: dur}})
+        for s, e in pieces:
+            dur = e - s
+            tracked += dur
+            totals[c.kind] += dur
+            for dd, ss, ee in _split_by_day(s, e, day_start):
+                if dd in days:
+                    days[dd][c.kind] += ee - ss
+                    dc = day_cats[dd]
+                    dc[c.id] = dc.get(c.id, 0.0) + (ee - ss)
+            categories[c.id] = categories.get(c.id, 0.0) + dur
+            key = (r["app"], r["title"])
+            it = items.get(key)
+            if it is None:
+                it = {"app": r["app"], "title": r["title"], "seconds": 0.0, "count": 0,
+                      "category_id": c.id, "category": c.path, "kind": c.kind, "source": source, "first": s, "last": e}
+                items[key] = it
+            it["seconds"] += dur
+            it["count"] += 1
+            it["last"] = max(it["last"], e)
+            it["first"] = min(it["first"], s)
+            if source == "block" and it["source"] != "block":
+                it["source"] = "mixed"
+            if kind == "day":
+                blk = timeline[-1] if timeline else None
+                if blk and blk["category_id"] == c.id and s - blk["end"] <= 2.0 and blk["app"] == r["app"]:
+                    blk["end"] = e
+                    blk["ids"].append(r["id"])
+                    blk["titles"][r["title"]] = blk["titles"].get(r["title"], 0.0) + dur
+                else:
+                    timeline.append({"start": s, "end": e, "category_id": c.id, "category": c.path, "kind": c.kind,
+                                     "color": c.color, "app": r["app"], "ids": [r["id"]], "titles": {r["title"]: dur}})
     for blk in timeline:
         top = sorted(blk["titles"].items(), key=lambda kv: -kv[1])[:4]
         blk["titles"] = [{"title": t, "seconds": sec} for t, sec in top]
@@ -156,8 +199,8 @@ def compute(db, cat, kind, d, day_start, target_min, workdays=(0, 1, 2, 3, 4), n
     return {
         "range": {"kind": kind, "date": d.isoformat(), "first": first.isoformat(), "last": last.isoformat(),
                   "start": start, "end": end, "day_start": day_start, "days": day_count},
-        "totals": {**totals, "active": totals["work"] + totals["nonwork"], "tracked": tracked,
-                   "untracked": max(0.0, elapsed - tracked)},
+        "totals": {**totals, "active": totals["work"] + totals["nonwork"], "tracked": tracked, "sleep": sleep,
+                   "untracked": max(0.0, elapsed - tracked - sleep)},
         "target_minutes": target_min,
         "targets": targets,
         "workdays": sorted(workdays),

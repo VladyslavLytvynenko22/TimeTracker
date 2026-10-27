@@ -56,7 +56,8 @@ Settings page:
 - tell you when the target is reached
 - remind you about overtime every N minutes of extra work (only fires while work time keeps growing)
 
-- weekly summary toast (Friday 18:00 by default): hours worked against the week target plus not-work time
+- weekly summary toast (Friday 18:00 by default): hours worked against the week target, not-work time and
+  the top three work categories
 
 Toasts show as "TimeTracker" and clicking one opens the dashboard.
 
@@ -65,6 +66,13 @@ Toasts show as "TimeTracker" and clicking one opens the dashboard.
 Days start at 04:00 by default (Settings → Day starts at), so a late night belongs to the day it started.
 Week = Monday to Sunday, month = calendar month, both built from those logical days. The week and month
 targets are the daily target times the work days you tick in Settings (Mon–Fri = 40h a week).
+
+A category can have its own daily target (Rules → Categories → Edit). The Overview category list then
+shows progress against it, multiplied by the work days for week and month views.
+
+Away time between the day start and the first activity of a day counts as sleep and is left out of the
+Away total and the timeline. Parent categories that only group others (such as "Work") are hidden from
+the pickers.
 
 The Week and Month charts can be switched to "By category" (top 7 categories stacked, the rest as Other).
 "Export CSV" in the range bar downloads the current range as windows, per-day totals, or every segment.
@@ -81,3 +89,10 @@ The Week and Month charts can be switched to "By category" (top 7 categories sta
 Keyboard: ← / → move the day, week or month on the Overview and Review pages.
 
 Environment overrides for testing: `TT_DATA_DIR` (data folder) and `TT_PORT`.
+
+## Importing ActivityWatch history
+
+`python tools\import_aw_buckets.py path\to\aw-buckets-export.json` imports the window and AFK buckets
+(use `--dry-run` to see counts first, `--undo` to remove the import again). Only time before TimeTracker's
+own first record is imported, a backup of the database is written next to it, and the imported rows follow
+the current rules like everything else.

@@ -83,9 +83,13 @@
 
   function catById(id) { return state.categories.find(c => c.id === id); }
   function catColor(id, kind) { const c = catById(id); return (c && c.color) || KIND_COLOR[kind] || KIND_COLOR.work; }
+  function isGroup(c) {
+    return state.categories.some(o => o.path.startsWith(c.path + " > ")) && !(state.rules || []).some(r => r.category_id === c.id);
+  }
+  function pickableCats(keepId) { return state.categories.filter(c => c.id === keepId || !isGroup(c)); }
   function catOptions(selected, extra) {
     const groups = { work: [], nonwork: [], afk: [] };
-    state.categories.forEach(c => groups[c.kind].push(c));
+    pickableCats(selected).forEach(c => groups[c.kind].push(c));
     let html = extra || "";
     for (const k of ["work", "nonwork", "afk"]) {
       if (!groups[k].length) continue;
@@ -206,40 +210,98 @@
     if (isDay) renderTape(); else renderColumns();
     renderCategories();
     renderTopItems();
+    renderFilterBar();
   }
+
+  const catFilter = new Set();
+  const catMatch = path => catFilter.size === 0 || [...catFilter].some(sel => path === sel || path.startsWith(sel + " > "));
+  function renderFilterBar() {
+    const bar = $("#filter-bar");
+    if (!catFilter.size) { bar.hidden = true; return; }
+    const s = state.summary;
+    const total = s ? s.categories.filter(c => catMatch(c.path)).reduce((a, c) => a + c.seconds, 0) : 0;
+    bar.hidden = false;
+    bar.innerHTML = `<span>Showing only</span>` + [...catFilter].map(p => `<button class="chip" data-path="${esc(p)}" title="Remove">${esc(p)} ×</button>`).join("") +
+      `<span class="hint">${fmt(total)} in this range</span><button class="tiny" id="filter-clear">Clear</button>`;
+  }
+  function toggleCat(path) {
+    if (catFilter.has(path)) catFilter.delete(path);
+    else {
+      for (const p of [...catFilter]) { if (p.startsWith(path + " > ") || path.startsWith(p + " > ")) catFilter.delete(p); }
+      catFilter.add(path);
+    }
+    if (state.summary) { if (state.view === "overview") renderOverview(); else renderReview(); }
+    renderFilterBar();
+  }
+
+  const zoom = { v0: 0, v1: 1 };
+  const resetZoom = () => { zoom.v0 = 0; zoom.v1 = 1; };
 
   function renderTape() {
     const s = state.summary, start = s.range.start, span = s.range.end - start;
     const tape = $("#tape");
     tape.innerHTML = "";
-    const frag = document.createDocumentFragment();
+    const track = document.createElement("div");
+    track.className = "track";
     s.timeline.forEach((b, i) => {
       const el = document.createElement("div");
-      el.className = "blk " + b.kind;
+      el.className = "blk " + b.kind + (catMatch(b.category) ? "" : " dim");
       el.style.left = ((b.start - start) / span * 100) + "%";
-      el.style.width = Math.max(0.05, (b.end - b.start) / span * 100) + "%";
+      el.style.width = Math.max(0.02, (b.end - b.start) / span * 100) + "%";
       el.style.background = b.color;
       el.dataset.i = i;
-      frag.appendChild(el);
+      track.appendChild(el);
     });
     if (isToday()) {
       const now = document.createElement("div");
       now.className = "now";
       now.style.left = ((s.now - start) / span * 100) + "%";
-      frag.appendChild(now);
+      track.appendChild(now);
     }
-    tape.appendChild(frag);
+    tape.appendChild(track);
+    applyZoom();
+  }
+
+  function applyZoom() {
+    const s = state.summary;
+    if (!s || state.range !== "day") return;
+    const track = $("#tape .track");
+    if (!track) return;
+    const vs = zoom.v1 - zoom.v0;
+    track.style.width = (100 / vs) + "%";
+    track.style.left = (-zoom.v0 / vs * 100) + "%";
     const axis = $("#tape-axis");
     axis.innerHTML = "";
-    const [h0] = s.range.day_start.split(":").map(Number);
-    for (let i = 0; i <= 24; i += 2) {
+    const [h0, m0] = s.range.day_start.split(":").map(Number);
+    const hours = vs * 24;
+    const stepMin = hours > 12 ? 120 : hours > 6 ? 60 : hours > 3 ? 30 : hours > 1.2 ? 15 : hours > 0.4 ? 5 : 1;
+    const startMin = Math.ceil(zoom.v0 * 1440 / stepMin) * stepMin;
+    for (let m = startMin; m <= zoom.v1 * 1440 + 0.001; m += stepMin) {
+      const f = (m / 1440 - zoom.v0) / vs;
+      if (f < -0.001 || f > 1.001) continue;
       const sp = document.createElement("span");
-      sp.style.left = (i / 24 * 100) + "%";
-      sp.textContent = pad2((h0 + i) % 24);
-      if (i === 24) sp.style.transform = "translateX(-100%)";
-      if (i === 0) sp.style.transform = "none";
+      sp.style.left = (f * 100) + "%";
+      const tot = h0 * 60 + m0 + m;
+      const hh = Math.floor(tot / 60) % 24, mm = tot % 60;
+      sp.textContent = stepMin >= 60 ? pad2(hh) : pad2(hh) + ":" + pad2(mm);
+      if (f > 0.97) sp.style.transform = "translateX(-100%)";
+      if (f < 0.03) sp.style.transform = "none";
       axis.appendChild(sp);
     }
+    const zoomed = vs < 0.999;
+    $("#zoom-reset").hidden = !zoomed;
+    $("#chart-hint").textContent = zoomed ? "Scroll to zoom, drag to pan, double-click to reset" : "Hover a block for details, click to change it, scroll to zoom";
+  }
+
+  function zoomAt(fraction, factor) {
+    const vs = zoom.v1 - zoom.v0;
+    const t = zoom.v0 + fraction * vs;
+    const ns = Math.min(1, Math.max(10 / 1440, vs * factor));
+    let v0 = t - fraction * ns;
+    v0 = Math.max(0, Math.min(1 - ns, v0));
+    zoom.v0 = v0;
+    zoom.v1 = v0 + ns;
+    applyZoom();
   }
 
   function blockTip(b) {
@@ -301,13 +363,16 @@
   }
 
   function chartSeries(s) {
+    const dayCats = d => (d.categories || []).filter(x => catMatch(x.path));
     if (chartMode !== "cat") {
-      return [{ label: "Work", color: KIND_COLOR.work, value: d => d.work }, { label: "Not work", color: KIND_COLOR.nonwork, value: d => d.nonwork }];
+      if (!catFilter.size) return [{ label: "Work", color: KIND_COLOR.work, value: d => d.work }, { label: "Not work", color: KIND_COLOR.nonwork, value: d => d.nonwork }];
+      return [{ label: "Work", color: KIND_COLOR.work, value: d => dayCats(d).filter(x => x.kind === "work").reduce((a, x) => a + x.seconds, 0) },
+              { label: "Not work", color: KIND_COLOR.nonwork, value: d => dayCats(d).filter(x => x.kind === "nonwork").reduce((a, x) => a + x.seconds, 0) }];
     }
-    const top = s.categories.filter(c => c.kind !== "afk").slice(0, 7);
+    const top = s.categories.filter(c => c.kind !== "afk" && catMatch(c.path)).slice(0, 7);
     const ids = new Set(top.map(c => c.id));
     const series = top.map((c, i) => ({ label: c.path, color: CAT_PALETTE[i], value: d => (d.categories || []).filter(x => x.id === c.id).reduce((a, x) => a + x.seconds, 0) }));
-    series.push({ label: "Other", color: OTHER_COLOR, value: d => (d.categories || []).filter(x => x.kind !== "afk" && !ids.has(x.id)).reduce((a, x) => a + x.seconds, 0) });
+    series.push({ label: "Other", color: OTHER_COLOR, value: d => dayCats(d).filter(x => x.kind !== "afk" && !ids.has(x.id)).reduce((a, x) => a + x.seconds, 0) });
     return series;
   }
 
@@ -336,21 +401,40 @@
     return flat;
   }
 
+  function targetFactor() {
+    const s = state.summary;
+    if (!s || state.range === "day" || !s.targets || !s.targets.day) return 1;
+    return s.targets.range / s.targets.day;
+  }
   function renderCategories() {
     const list = $("#cat-list"), s = state.summary;
     const flat = buildCatTree();
     const max = Math.max(1, ...flat.filter(n => n.depth === 0).map(n => n.total));
     if (!flat.length) { list.innerHTML = `<p class="empty">Nothing tracked yet.</p>`; return; }
-    list.innerHTML = flat.map(n => `
-      <div class="cat-row">
-        <div class="name depth-${Math.min(3, n.depth)}" title="${esc(n.path)}"><i style="background:${n.color}"></i>${esc(n.name)}</div>
-        <div class="val">${fmt(n.total)}</div>
-        <div class="bar"><i style="width:${n.total / max * 100}%;background:${n.color};opacity:${n.depth ? 0.55 : 1}"></i></div>
-      </div>`).join("");
+    const factor = targetFactor();
+    list.innerHTML = flat.map(n => {
+      const c = state.categories.find(x => x.path === n.path);
+      const goal = c && c.target_min ? c.target_min * 60 * factor : 0;
+      let val = fmt(n.total), bar;
+      if (goal) {
+        const pct = Math.min(100, n.total / goal * 100);
+        const over = n.total > goal;
+        val = `<span class="${over ? "hit" : ""}">${fmt(n.total)}</span> <span class="goal">/ ${fmt(goal)}</span>`;
+        bar = `<div class="bar goal" title="${over ? fmt(n.total - goal) + " over the target" : fmt(goal - n.total) + " left to the target"}"><i style="width:${pct}%;background:${over ? "var(--hit)" : n.color}"></i></div>`;
+      } else {
+        bar = `<div class="bar"><i style="width:${n.total / max * 100}%;background:${n.color};opacity:${n.depth ? 0.55 : 1}"></i></div>`;
+      }
+      return `
+      <div class="cat-row ${catFilter.has(n.path) ? "sel" : ""} ${catFilter.size && !catMatch(n.path) && ![...catFilter].some(p => p.startsWith(n.path + " > ")) ? "off" : ""}" data-path="${esc(n.path)}" title="Click to show only ${esc(n.path)}">
+        <div class="name depth-${Math.min(3, n.depth)}"><i style="background:${n.color}"></i>${esc(n.name)}</div>
+        <div class="val">${val}</div>
+        ${bar}
+      </div>`;
+    }).join("");
   }
 
   function renderTopItems() {
-    const items = state.summary.items.slice(0, 12);
+    const items = state.summary.items.filter(it => catMatch(it.category)).slice(0, 12);
     const el = $("#top-items");
     if (!items.length) { el.innerHTML = `<p class="empty">Nothing tracked yet.</p>`; return; }
     el.innerHTML = items.map(it => `
@@ -364,7 +448,7 @@
   function reviewRows() {
     const s = state.summary;
     if (!s) return [];
-    let items = s.items;
+    let items = s.items.filter(it => catMatch(it.category));
     const q = state.rv.q.trim().toLowerCase();
     if (q) items = items.filter(it => it.title.toLowerCase().includes(q) || it.app.toLowerCase().includes(q));
     if (state.rv.kind === "default") items = items.filter(it => it.source === "default");
@@ -421,6 +505,7 @@
         <td class="act"><button class="tiny mk-rule" title="Create a rule from this">Rule</button> ${it.source === "manual" ? `<button class="tiny clr" title="Remove the manual choice">×</button>` : ""}</td>
       </tr>`).join("");
     body._rows = rows;
+    renderFilterBar();
   }
 
   async function setItemCategory(it, cid) {
@@ -515,9 +600,10 @@
     const isEdit = !!pre.id;
     openModal(`
       <h2>${isEdit ? "Edit category" : "New category"}</h2>
-      <div class="field"><label for="c-name">Name</label><input id="c-name" type="text" value="${esc(pre.path || "")}" ${pre.protected ? "readonly" : ""} placeholder="Work > Programming > SQL"><span class="hint">Use " > " to nest under a parent.</span></div>
+      <div class="field"><label for="c-name">Name</label><input id="c-name" type="text" value="${esc(pre.path || "")}" ${pre.protected ? "readonly" : ""} placeholder="Work > Development > SQL"><span class="hint">Use " > " to nest under a parent.</span></div>
       <div class="field"><label for="c-kind">Counts as</label><select id="c-kind"><option value="work">Work</option><option value="nonwork">Not work</option><option value="afk">Away</option></select></div>
       <div class="field"><label for="c-color">Color</label><div class="unit"><input id="c-color" type="color" value="${esc(pre.color || "#3987e5")}"><button type="button" class="tiny" id="c-color-reset">Use the kind's color</button></div></div>
+      <div class="field"><label for="c-target-h">Daily target</label><div class="unit"><input id="c-target-h" type="number" min="0" max="24" class="short" value="${Math.floor((pre.target_min || 0) / 60)}"><span>h</span><input id="c-target-m" type="number" min="0" max="59" class="short" value="${(pre.target_min || 0) % 60}"><span>min</span></div><span class="hint">Optional. Shown as progress in the category list; week and month multiply it by work days.</span></div>
       <div class="actions"><span class="err" id="c-err"></span>${isEdit && !pre.protected ? `<button type="button" class="danger" id="c-delete">Delete</button>` : ""}<button type="button" class="ghost" id="c-cancel">Cancel</button><button type="button" class="primary" id="c-save">Save</button></div>`);
     $("#c-kind").value = pre.kind || "work";
     let color = pre.color_raw || null;
@@ -530,7 +616,8 @@
     };
     $("#c-save").onclick = async () => {
       try {
-        const body = { path: $("#c-name").value, kind: $("#c-kind").value, color };
+        const body = { path: $("#c-name").value, kind: $("#c-kind").value, color,
+          target_min: Number($("#c-target-h").value || 0) * 60 + Number($("#c-target-m").value || 0) };
         if (isEdit) body.id = pre.id;
         await api("/api/categories", "POST", body);
         closeModal();
@@ -591,9 +678,9 @@
       broken.innerHTML = "Some patterns are not valid and are skipped: " + state.brokenRules.map(b => `<code>${esc(b.pattern)}</code> (${esc(b.error)})`).join(", ");
     } else broken.hidden = true;
 
-    $("#cat-admin").innerHTML = state.categories.map(c => `
+    $("#cat-admin").innerHTML = pickableCats().map(c => `
       <div class="row" data-id="${c.id}">
-        <div class="n" title="${esc(c.path)}"><i style="background:${c.color}"></i>${esc(c.path)}</div>
+        <div class="n" title="${esc(c.path)}"><i style="background:${c.color}"></i>${esc(c.path)}${c.target_min ? ` <small class="k">target ${fmt(c.target_min * 60)}/day</small>` : ""}</div>
         <select class="k-sel" title="Counts as"><option value="work" ${c.kind === "work" ? "selected" : ""}>Work</option><option value="nonwork" ${c.kind === "nonwork" ? "selected" : ""}>Not work</option><option value="afk" ${c.kind === "afk" ? "selected" : ""}>Away</option></select>
         <button class="tiny edit">Edit</button>
       </div>`).join("");
@@ -648,7 +735,7 @@
     $("#s-private").value = s.private_windows || "hide";
     $("#s-media").checked = s.media_keeps_active !== false;
     const callSel = $("#s-calls-cat");
-    callSel.innerHTML = state.categories.filter(c => c.kind !== "afk").map(c => `<option value="${esc(c.path)}">${esc(c.path)}</option>`).join("");
+    callSel.innerHTML = pickableCats().filter(c => c.kind !== "afk").map(c => `<option value="${esc(c.path)}">${esc(c.path)}</option>`).join("");
     $("#s-calls").checked = !!s.calls_category;
     if (s.calls_category) callSel.value = s.calls_category;
     else if ([...callSel.options].some(o => o.value === "Work > Chat & Calls")) callSel.value = "Work > Chat & Calls";
@@ -702,6 +789,7 @@
   }
 
   function navigate(dir) {
+    resetZoom();
     const d = state.date;
     if (state.range === "day") state.date = addDays(d, dir);
     else if (state.range === "week") state.date = addDays(d, 7 * dir);
@@ -711,14 +799,23 @@
 
   function bind() {
     window.addEventListener("hashchange", () => setView(location.hash.slice(1)));
-    $$("#rangeseg button").forEach(b => b.onclick = () => { state.range = b.dataset.range; loadSummary().catch(fail); });
+    $$("#rangeseg button").forEach(b => b.onclick = () => { resetZoom(); state.range = b.dataset.range; loadSummary().catch(fail); });
     $("#prev").onclick = () => navigate(-1);
     $("#next").onclick = () => navigate(1);
-    $("#today").onclick = () => { state.date = fromIso(state.status.today); loadSummary().catch(fail); };
+    $("#today").onclick = () => { resetZoom(); state.date = fromIso(state.status.today); loadSummary().catch(fail); };
+    const manualRefresh = async () => {
+      const btn = $("#refresh");
+      btn.disabled = true;
+      try { await Promise.all([refreshStatus(), loadMeta()]); await loadSummary(); toast("Refreshed"); }
+      catch (e) { fail(e); }
+      finally { btn.disabled = false; }
+    };
+    $("#refresh").onclick = manualRefresh;
     document.addEventListener("keydown", e => {
       if (modal.open || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName) || $("#rangebar").hidden) return;
       if (e.key === "ArrowLeft") navigate(-1);
       if (e.key === "ArrowRight") navigate(1);
+      if (e.key === "r" || e.key === "R") manualRefresh();
     });
 
     const tape = $("#tape");
@@ -728,9 +825,47 @@
       showTip(blockTip(state.summary.timeline[el.dataset.i]), e);
     });
     tape.addEventListener("mouseleave", hideTip);
+    let drag = null;
     tape.addEventListener("click", e => {
+      if (drag && drag.moved) { drag = null; return; }
+      drag = null;
       const el = e.target.closest(".blk");
       if (el) { hideTip(); blockModal(state.summary.timeline[el.dataset.i]); }
+    });
+    tape.addEventListener("wheel", e => {
+      if (state.range !== "day" || !state.summary) return;
+      e.preventDefault();
+      const r = tape.getBoundingClientRect();
+      zoomAt((e.clientX - r.left) / r.width, e.deltaY < 0 ? 0.7 : 1 / 0.7);
+      hideTip();
+    }, { passive: false });
+    tape.addEventListener("mousedown", e => {
+      if (e.button !== 0) return;
+      drag = { x: e.clientX, v0: zoom.v0, moved: false };
+    });
+    window.addEventListener("mousemove", e => {
+      if (!drag) return;
+      const r = tape.getBoundingClientRect();
+      const dx = (e.clientX - drag.x) / r.width;
+      if (Math.abs(e.clientX - drag.x) > 3) drag.moved = true;
+      if (!drag.moved) return;
+      const vs = zoom.v1 - zoom.v0;
+      let v0 = Math.max(0, Math.min(1 - vs, drag.v0 - dx * vs));
+      zoom.v0 = v0; zoom.v1 = v0 + vs;
+      applyZoom();
+      hideTip();
+    });
+    window.addEventListener("mouseup", () => { if (drag && !drag.moved) drag = null; });
+    tape.addEventListener("dblclick", () => { resetZoom(); applyZoom(); });
+    $("#zoom-reset").onclick = () => { resetZoom(); applyZoom(); };
+    $("#cat-list").addEventListener("click", e => {
+      const row = e.target.closest(".cat-row");
+      if (row) toggleCat(row.dataset.path);
+    });
+    $("#filter-bar").addEventListener("click", e => {
+      if (e.target.closest("#filter-clear")) { catFilter.clear(); if (state.summary) { if (state.view === "overview") renderOverview(); else renderReview(); } renderFilterBar(); return; }
+      const chip = e.target.closest(".chip");
+      if (chip) toggleCat(chip.dataset.path);
     });
     const cols = $("#columns");
     cols.addEventListener("mousemove", e => {

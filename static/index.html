@@ -35,12 +35,14 @@
     <h1 class="datelabel" id="datelabel"></h1>
     <button class="icon" id="next" title="Next (→)">&#8250;</button>
     <button class="ghost" id="today">Today</button>
+    <button class="icon" id="refresh" title="Refresh data (R)">&#8635;</button>
   </div>
   <div class="legend">
     <span><i style="background:var(--work)"></i>Work</span>
     <span><i style="background:var(--nonwork)"></i>Not work</span>
     <span><i style="background:var(--afk)"></i>Away</span>
   </div>
+  <div class="filter-bar" id="filter-bar" hidden></div>
   <details class="menu" id="export-menu">
     <summary class="ghost">Export CSV</summary>
     <div class="menu-items">
@@ -72,7 +74,7 @@
   </section>
 
   <section class="card" id="tape-card">
-    <div class="card-head"><h2 id="chart-title">The day</h2><div class="head-right"><div class="seg small" id="chart-mode" hidden><button data-mode="kind" class="on">Work / Not work</button><button data-mode="cat">By category</button></div><span class="hint" id="chart-hint">Hover a block for details, click to change its category</span></div></div>
+    <div class="card-head"><h2 id="chart-title">The day</h2><div class="head-right"><button class="tiny" id="zoom-reset" hidden>Reset zoom</button><div class="seg small" id="chart-mode" hidden><button data-mode="kind" class="on">Work / Not work</button><button data-mode="cat">By category</button></div><span class="hint" id="chart-hint">Hover a block for details, click to change its category</span></div></div>
     <div id="tape-wrap">
       <div class="tape" id="tape"></div>
       <div class="tape-axis" id="tape-axis"></div>
@@ -145,7 +147,7 @@
     </div>
     <div class="card">
       <div class="card-head"><h2>Categories</h2><button class="primary" id="add-cat">Add category</button></div>
-      <p class="hint block">A category counts as work, not work, or away. Use " > " in the name to nest, e.g. Work > Programming > SQL.</p>
+      <p class="hint block">A category counts as work, not work, or away. Use " > " in the name to nest, e.g. Work > Development > SQL.</p>
       <div class="cat-admin" id="cat-admin"></div>
       <h3 class="sub">Manual choices</h3>
       <p class="hint block">Exact windows you categorized by hand in Review.</p>

@@ -28,30 +28,47 @@ KIND_COLORS = {"work": "#3987e5", "nonwork": "#d95926", "afk": "#6b6b72"}
 DEFAULT_CATEGORIES = [
     ("AFK", "afk", "#6b6b72", [r"LockApp|Windows Default Lock Screen"]),
     ("Entertainment", "nonwork", "#d95926", [
-        r"аніме|anime|anitube|Серіал|серіал|serial|hdrezka|rezka|uakino|kinogo|netflix|youtube|twitch|фільм|\bfilm|movie|Xiaomi Camera Viewer|Modern Warfare 2",
+        r"аніме|anime|anitube|Серіал|серіал|serial|hdrezka|rezka|uakino|kinogo|netflix|youtube|twitch|фільм|\bfilm|movie|Xiaomi Camera Viewer|Modern Warfare 2|\bсерія\b|дивитися онлайн|сезон \d",
     ]),
-    ("Games", "nonwork", "#d95926", [r"Grounded|Steam|Epic Games"]),
-    ("Shopping", "nonwork", "#d95926", [r"ROZETKA|rozetka|Prom\.ua|prom\.ua|\bOLX\b|AliExpress|Amazon"]),
-    ("Social", "nonwork", "#d95926", [r"Facebook|Instagram|TikTok|Reddit|Twitter"]),
-    ("Work > Programming > Visual Studio", "work", None, [r"devenv|Microsoft Visual Studio|Visual Studio"]),
-    ("Work > Programming > Visual Studio Code", "work", None, [r"Code\.exe|Visual Studio Code"]),
-    ("Work > Programming > SQL", "work", None, [r"SSMS|Ssms\.exe|SQL Server Management Studio|pgAdmin|\bSQL\b"]),
-    ("Work > Programming > Localhost", "work", None, [r"React App|localhost|127\.0\.0\.1"]),
-    ("Work > Programming > TeamCity", "work", None, [r"TeamCity"]),
-    ("Work > Programming > Postman", "work", None, [r"Postman"]),
-    ("Work > Programming > Git", "work", None, [r"\bgit\b|github\.com|Bitbucket|GitHub|Gitlab|Sourcetree|TortoiseGit|GitExtensions"]),
-    ("Work > Programming > AI & Terminal", "work", None, [r"Claude|claude\.ai|ChatGPT|WindowsTerminal|Windows Terminal|powershell|cmd\.exe|ShellExperienceHost|ShellHost"]),
-    ("Work > Programming", "work", None, [r"Stack Overflow|\bvim\b|Spyder|Ghidra|DevTools|Nexus"]),
+    ("Games", "nonwork", "#d95926", [r"Grounded|Maine-Win64-Shipping|Steam|Epic Games"]),
+    ("Shopping", "nonwork", "#d95926", [r"ROZETKA|rozetka|Prom\.ua|prom\.ua|\bOLX\b|AliExpress|Amazon|Епіцентр|EPICENTRK|Сільпо|Dreame|Dracar|Оформлення замовлення|Замовлення|Списки »|HOME FOOD|MTA - мережа|Google Maps"]),
+    ("Social & Messengers", "nonwork", "#d95926", [
+        r"Facebook|Instagram|TikTok|Reddit|Twitter|Messenger|Telegram|Signal|WhatsApp|Discord|Viber",
+    ]),
+    ("Work > Development > Visual Studio Code", "work", None, [r"Code\.exe|Visual Studio Code"]),
+    ("Work > Development > Visual Studio", "work", None, [r"devenv|Microsoft Visual Studio"]),
+    ("Work > Development > SQL", "work", None, [r"SSMS|Ssms\.exe|SQL Server Management Studio|pgAdmin|\bSQL\b"]),
+    ("Work > Development > Testing & Debugging", "work", None, [
+        r"React App|localhost|127\.0\.0\.1|DevTools|Playwright|Postman|Swagger",
+    ]),
+    ("Work > Development > TeamCity", "work", None, [r"TeamCity"]),
+    ("Work > Development > Git & Code Review", "work", None, [
+        r"\bgit\b|github\.com|Bitbucket|GitHub|Gitlab|Sourcetree|TortoiseGit|GitExtensions|InsuranceGIG/|VladyslavLytvynenko",
+    ]),
+    ("Work > Development > AI & Terminal", "work", None, [r"Claude|claude\.ai|ChatGPT|WindowsTerminal|Windows Terminal|powershell|cmd\.exe|ShellExperienceHost|ShellHost"]),
+    ("Work > Development", "work", None, [r"Stack Overflow|\bvim\b|Spyder|Ghidra|Nexus"]),
     ("Work > Chat & Calls", "work", None, [
         r"Google Chat|Gmail|Meet -|Mail -|mail\.google\.com|Outlook|ms-teams|meet\.google\.com|Microsoft Teams|Slack|Zoom|RingCentral|\bChat\b",
     ]),
+    ("Work > Monitoring & Logs", "work", None, [
+        r"Elastic|Grafana|Kibana|Hyperping|hyperping|HetrixTools|StatusCake|OpenSearch|Log Stream",
+    ]),
     ("Work > Documentation", "work", None, [
-        r"notepad|Notepad|Ant Design|Elastic|Grafana|Kibana|Swagger|HetrixTools|\bAPI\b|hyperping|Hyperping|Webhook|ElevenLabs|Accord|ACORD|Confluence|Google Docs",
+        r"notepad|Notepad|Confluence|Google Docs|WINWORD|\.docx|Ant Design|\bAPI\b|Webhook|ElevenLabs|Accord|ACORD",
     ]),
-    ("Work", "work", "#3987e5", [
-        r"libreoffice|ReText|explorer|Taskmgr|Task Manager|NowCerts|nowcerts|Momentum|momentum|momentumamp|OpenSearch|Twilio|My Workspace|Google Перекладач|Adobe Acrobat|Acrobat\.exe|ShareX|PORTAL|Insurance Agency Management System|Excel|EXCEL\.EXE|Internet Information Services \(IIS\) Manager|Jira|Microsoft Azure|Clockify|Lano|\bMAC\b|Insurance Agency AI|InsuranceGIG|All workflows|Toolbox|\bSMS\b|Google Password|Google Calendar|Google Tasks|Remote Desktop Connection|Kudu|Key Vault|ActivityWatch|TimeTracker",
+    ("Work > Planning & Admin", "work", None, [
+        r"Jira|Clockify|Lano|Google Calendar|Google Tasks|Google Password|ActivityWatch|TimeTracker",
     ]),
-    ("Comms > IM", "work", None, [r"Messenger|Telegram|Signal|WhatsApp|Discord|Viber"]),
+    ("Work > Infrastructure", "work", None, [
+        r"Microsoft Azure|Kudu|Key Vault|Internet Information Services \(IIS\) Manager|Remote Desktop Connection|mstsc|S3 File",
+    ]),
+    ("Work > Office & Files", "work", None, [
+        r"libreoffice|ReText|explorer|Taskmgr|Task Manager|Adobe Acrobat|Acrobat\.exe|ShareX|Excel|EXCEL\.EXE|Google Sheets|Google Перекладач",
+    ]),
+    ("Work > Momentum Products", "work", None, [
+        r"NowCerts|nowcerts|Momentum|momentum|momentumamp|Insurance Agency Management System|PORTAL|Insurance Agency AI|InsuranceGIG|\bMAC\b|Toolbox|All workflows|Twilio|Lightspeed|Spoke Phone|Communicator Web|EIS - |\bSMS\b",
+    ]),
+    ("Work", "work", "#3987e5", []),
     ("Uncategorized", "nonwork", "#c98500", []),
 ]
 
@@ -123,6 +140,9 @@ class Database:
         cols = {r[1] for r in self.conn.execute("PRAGMA table_info(events)").fetchall()}
         if "call" not in cols:
             self.conn.execute("ALTER TABLE events ADD COLUMN call INTEGER NOT NULL DEFAULT 0")
+        ccols = {r[1] for r in self.conn.execute("PRAGMA table_info(categories)").fetchall()}
+        if "target_min" not in ccols:
+            self.conn.execute("ALTER TABLE categories ADD COLUMN target_min INTEGER NOT NULL DEFAULT 0")
 
     def _seed(self):
         with self.lock:
@@ -182,7 +202,7 @@ class Database:
             return default
 
     def categories(self):
-        return self.query("SELECT id, path, kind, color FROM categories ORDER BY path")
+        return self.query("SELECT id, path, kind, color, target_min FROM categories ORDER BY path")
 
     def rules(self):
         return self.query(
