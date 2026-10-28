@@ -31,10 +31,11 @@ DEFAULT_CATEGORIES = [
         r"аніме|anime|anitube|Серіал|серіал|serial|hdrezka|rezka|uakino|kinogo|netflix|youtube|twitch|фільм|\bfilm|movie|Xiaomi Camera Viewer|Modern Warfare 2|\bсерія\b|дивитися онлайн|сезон \d",
     ]),
     ("Games", "nonwork", "#d95926", [r"Grounded|Maine-Win64-Shipping|Steam|Epic Games"]),
-    ("Shopping", "nonwork", "#d95926", [r"ROZETKA|rozetka|Prom\.ua|prom\.ua|\bOLX\b|AliExpress|Amazon|Епіцентр|EPICENTRK|Сільпо|Dreame|Dracar|Оформлення замовлення|Замовлення|Списки »|HOME FOOD|MTA - мережа|Google Maps"]),
+    ("Shopping", "nonwork", "#d95926", [r"ROZETKA|rozetka|Prom\.ua|prom\.ua|\bOLX\b|AliExpress|Amazon|Епіцентр|EPICENTRK|Сільпо|Dreame|Dracar|Оформлення замовлення|Замовлення|Списки »|HOME FOOD|MTA - мережа|Google Maps|Google Карты|Google Карти|dnipro-?m"]),
     ("Social & Messengers", "nonwork", "#d95926", [
         r"Facebook|Instagram|TikTok|Reddit|Twitter|Messenger|Telegram|Signal|WhatsApp|Discord|Viber",
     ]),
+    ("Web search", "nonwork", "#d95926", [r"Google Search|Пошук Google|Поиск в Google|^New Tab - Google Chrome$|^Untitled - Google Chrome$"]),
     ("Work > Development > Visual Studio Code", "work", None, [r"Code\.exe|Visual Studio Code"]),
     ("Work > Development > Visual Studio", "work", None, [r"devenv|Microsoft Visual Studio"]),
     ("Work > Development > SQL", "work", None, [r"SSMS|Ssms\.exe|SQL Server Management Studio|pgAdmin|\bSQL\b"]),
@@ -57,7 +58,7 @@ DEFAULT_CATEGORIES = [
         r"notepad|Notepad|Confluence|Google Docs|WINWORD|\.docx|Ant Design|\bAPI\b|Webhook|ElevenLabs|Accord|ACORD",
     ]),
     ("Work > Planning & Admin", "work", None, [
-        r"Jira|Clockify|Lano|Google Calendar|Google Tasks|Google Password|ActivityWatch|TimeTracker",
+        r"Jira|Clockify|Lano|Google Calendar|Google Tasks|Google Password|ActivityWatch|TimeTracker|Vanta|BitLocker",
     ]),
     ("Work > Infrastructure", "work", None, [
         r"Microsoft Azure|Kudu|Key Vault|Internet Information Services \(IIS\) Manager|Remote Desktop Connection|mstsc|S3 File",
@@ -69,7 +70,7 @@ DEFAULT_CATEGORIES = [
         r"NowCerts|nowcerts|Momentum|momentum|momentumamp|Insurance Agency Management System|PORTAL|Insurance Agency AI|InsuranceGIG|\bMAC\b|Toolbox|All workflows|Twilio|Lightspeed|Spoke Phone|Communicator Web|EIS - |\bSMS\b",
     ]),
     ("Work", "work", "#3987e5", []),
-    ("Uncategorized", "nonwork", "#c98500", []),
+    ("Uncategorized", "nonwork", "#d45bb5", []),
 ]
 
 PRIVATE_TITLE = "Private window (Incognito / InPrivate)"

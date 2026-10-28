@@ -37,7 +37,7 @@ To stop it and remove the autostart: `.\uninstall.ps1` (your data stays in `data
   time is recorded with the title hidden ("Private window") under the *Private browsing* category.
 - Everything else goes through the rules on the *Rules* page, top to bottom. The first regular expression
   that matches the window title or the app name wins. Each category counts as work, not work or away.
-  Windows that match no rule go to **Uncategorized** (amber, counts as not work). Use the *Needs a rule*
+  Windows that match no rule go to **Uncategorized** (magenta, counts as not work). Use the *Needs a rule*
   filter on the Review page to find the biggest uncategorized windows and give them a rule.
 - On the *Review* page you can change the category of any window by hand (this beats the rules), click a
   title to change single segments, or press **Rule** to turn a window into a new rule. Rules created there

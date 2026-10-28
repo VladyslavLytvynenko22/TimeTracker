@@ -193,6 +193,7 @@
     $("#t-nonwork").textContent = fmt(t.nonwork);
     $("#t-nonwork-sub").textContent = t.active ? Math.round(t.nonwork / t.active * 100) + "% of time at the computer" : "";
     $("#t-afk").textContent = fmt(t.afk);
+    $("#t-afk-sub").textContent = t.sleep > 0 ? `locked or idle · plus ${fmt(t.sleep)} asleep, not counted` : "locked or idle while at work";
     $("#t-active").textContent = fmt(t.active);
     $("#t-active-sub").textContent = t.active ? `work ${Math.round(t.work / t.active * 100)}% · not work ${Math.round(t.nonwork / t.active * 100)}%` : "";
     $("#t-untracked").textContent = fmt(t.untracked);
@@ -234,11 +235,25 @@
     renderFilterBar();
   }
 
-  const zoom = { v0: 0, v1: 1 };
-  const resetZoom = () => { zoom.v0 = 0; zoom.v1 = 1; };
+  const zoom = { v0: 0, v1: 1, mode: "fit" };
+  const resetZoom = () => { zoom.v0 = 0; zoom.v1 = 1; zoom.mode = "fit"; };
+  function fitZoom() {
+    const s = state.summary;
+    zoom.v0 = 0; zoom.v1 = 1;
+    if (!s || !s.timeline.length) return;
+    const start = s.range.start, span = s.range.end - start;
+    let a = s.timeline[0].start, b = s.timeline[s.timeline.length - 1].end;
+    if (isToday()) b = Math.max(b, s.now);
+    const minSpan = 3600;
+    if (b - a < minSpan) { const mid = (a + b) / 2; a = mid - minSpan / 2; b = mid + minSpan / 2; }
+    const pad = (b - a) * 0.03;
+    zoom.v0 = Math.max(0, (a - pad - start) / span);
+    zoom.v1 = Math.min(1, (b + pad - start) / span);
+  }
 
   function renderTape() {
     const s = state.summary, start = s.range.start, span = s.range.end - start;
+    if (zoom.mode === "fit") fitZoom();
     const tape = $("#tape");
     tape.innerHTML = "";
     const track = document.createElement("div");
@@ -289,11 +304,16 @@
       axis.appendChild(sp);
     }
     const zoomed = vs < 0.999;
-    $("#zoom-reset").hidden = !zoomed;
-    $("#chart-hint").textContent = zoomed ? "Scroll to zoom, drag to pan, double-click to reset" : "Hover a block for details, click to change it, scroll to zoom";
+    const btn = $("#zoom-reset");
+    btn.hidden = !zoomed && zoom.mode === "fit";
+    btn.textContent = zoom.mode === "fit" ? "Full day" : "Fit to activity";
+    $("#chart-hint").textContent = zoom.mode === "fit"
+      ? "Showing the active part of the day · hover a block for details, click to change it, scroll to zoom"
+      : "Scroll to zoom, drag to pan, double-click to fit the activity";
   }
 
   function zoomAt(fraction, factor) {
+    zoom.mode = "manual";
     const vs = zoom.v1 - zoom.v0;
     const t = zoom.v0 + fraction * vs;
     const ns = Math.min(1, Math.max(10 / 1440, vs * factor));
@@ -849,6 +869,7 @@
       const dx = (e.clientX - drag.x) / r.width;
       if (Math.abs(e.clientX - drag.x) > 3) drag.moved = true;
       if (!drag.moved) return;
+      zoom.mode = "manual";
       const vs = zoom.v1 - zoom.v0;
       let v0 = Math.max(0, Math.min(1 - vs, drag.v0 - dx * vs));
       zoom.v0 = v0; zoom.v1 = v0 + vs;
@@ -856,8 +877,12 @@
       hideTip();
     });
     window.addEventListener("mouseup", () => { if (drag && !drag.moved) drag = null; });
-    tape.addEventListener("dblclick", () => { resetZoom(); applyZoom(); });
-    $("#zoom-reset").onclick = () => { resetZoom(); applyZoom(); };
+    tape.addEventListener("dblclick", () => { resetZoom(); fitZoom(); applyZoom(); });
+    $("#zoom-reset").onclick = () => {
+      if (zoom.mode === "fit") { zoom.mode = "full"; zoom.v0 = 0; zoom.v1 = 1; }
+      else { resetZoom(); fitZoom(); }
+      applyZoom();
+    };
     $("#cat-list").addEventListener("click", e => {
       const row = e.target.closest(".cat-row");
       if (row) toggleCat(row.dataset.path);
