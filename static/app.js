@@ -225,8 +225,12 @@
     bar.innerHTML = `<span>Showing only</span>` + [...catFilter].map(p => `<button class="chip" data-path="${esc(p)}" title="Remove">${esc(p)} ×</button>`).join("") +
       `<span class="hint">${fmt(total)} in this range</span><button class="tiny" id="filter-clear">Clear</button>`;
   }
-  function toggleCat(path) {
-    if (catFilter.has(path)) catFilter.delete(path);
+  function toggleCat(path, add) {
+    if (!add) {
+      const only = catFilter.size === 1 && catFilter.has(path);
+      catFilter.clear();
+      if (!only) catFilter.add(path);
+    } else if (catFilter.has(path)) catFilter.delete(path);
     else {
       for (const p of [...catFilter]) { if (p.startsWith(path + " > ") || path.startsWith(p + " > ")) catFilter.delete(p); }
       catFilter.add(path);
@@ -445,7 +449,7 @@
         bar = `<div class="bar"><i style="width:${n.total / max * 100}%;background:${n.color};opacity:${n.depth ? 0.55 : 1}"></i></div>`;
       }
       return `
-      <div class="cat-row ${catFilter.has(n.path) ? "sel" : ""} ${catFilter.size && !catMatch(n.path) && ![...catFilter].some(p => p.startsWith(n.path + " > ")) ? "off" : ""}" data-path="${esc(n.path)}" title="Click to show only ${esc(n.path)}">
+      <div class="cat-row ${catFilter.has(n.path) ? "sel" : ""} ${catFilter.size && !catMatch(n.path) && ![...catFilter].some(p => p.startsWith(n.path + " > ")) ? "off" : ""}" data-path="${esc(n.path)}" title="Click to show only ${esc(n.path)}, Ctrl+click to add it to the filter">
         <div class="name depth-${Math.min(3, n.depth)}"><i style="background:${n.color}"></i>${esc(n.name)}</div>
         <div class="val">${val}</div>
         ${bar}
@@ -457,11 +461,13 @@
     const items = state.summary.items.filter(it => catMatch(it.category)).slice(0, 12);
     const el = $("#top-items");
     if (!items.length) { el.innerHTML = `<p class="empty">Nothing tracked yet.</p>`; return; }
-    el.innerHTML = items.map(it => `
-      <div class="item-row">
+    el._items = items;
+    el.innerHTML = items.map((it, i) => `
+      <div class="item-row" data-i="${i}">
         <i style="background:${catColor(it.category_id, it.kind)}" title="${esc(it.category)}"></i>
-        <div class="t" title="${esc(it.title)}">${esc(it.title || "(no title)")} <span class="a">${esc(it.app)}</span></div>
+        <div class="t" title="${esc(it.title)}${it.url ? "\n" + esc(it.url) : ""}">${esc(it.title || "(no title)")} <span class="a">${esc(it.app)}</span>${it.url ? `<small class="url">${esc(it.url)}</small>` : ""}</div>
         <div class="v">${fmt(it.seconds)}</div>
+        <button class="tiny info" title="Show and copy everything about this window">Info</button>
       </div>`).join("");
   }
 
@@ -470,7 +476,7 @@
     if (!s) return [];
     let items = s.items.filter(it => catMatch(it.category));
     const q = state.rv.q.trim().toLowerCase();
-    if (q) items = items.filter(it => it.title.toLowerCase().includes(q) || it.app.toLowerCase().includes(q));
+    if (q) items = items.filter(it => it.title.toLowerCase().includes(q) || it.app.toLowerCase().includes(q) || (it.url || "").toLowerCase().includes(q));
     if (state.rv.kind === "default") items = items.filter(it => it.source === "default");
     else if (state.rv.kind === "needs") items = items.filter(it => it.source === "default");
     else if (state.rv.kind) items = items.filter(it => it.kind === state.rv.kind);
@@ -517,7 +523,7 @@
     body.innerHTML = rows.map((it, i) => `
       <tr data-i="${i}">
         <td class="app" title="${esc(it.app)}">${esc(it.app)}</td>
-        <td class="title ${byApp ? "" : "clickable"}" title="${esc(it.title)}">${esc(it.title || "(no title)")}</td>
+        <td class="title ${byApp ? "" : "clickable"}" title="${esc(it.title)}${it.url ? "\n" + esc(it.url) : ""}">${esc(it.title || "(no title)")}${it.url ? `<small class="url">${esc(it.url)}</small>` : ""}</td>
         <td><div class="catcell"><span class="kind-dot" style="background:${catColor(it.category_id, it.kind)}"></span><select class="cat-sel" ${it.source === "afk" ? "disabled" : ""}>${catOptions(it.category_id)}</select></div></td>
         <td class="num">${fmt(it.seconds)}</td>
         <td class="share"><i style="width:${it.seconds / max * 100}%;background:${catColor(it.category_id, it.kind)}"></i></td>
@@ -553,7 +559,7 @@
     const isEdit = !!pre.id;
     openModal(`
       <h2>${isEdit ? "Edit rule" : "New rule"}</h2>
-      <div class="field"><label for="m-pattern">Pattern</label><input id="m-pattern" type="text" value="${esc(pre.pattern || "")}" spellcheck="false"><span class="hint">Regular expression, checked against the window title and the app name. Example: anime|серіал|netflix</span></div>
+      <div class="field"><label for="m-pattern">Pattern</label><input id="m-pattern" type="text" value="${esc(pre.pattern || "")}" spellcheck="false"><span class="hint">Regular expression, checked against the window title, the page address and the app name. Example: anime|серіал|netflix or portal\.nowcerts\.com</span></div>
       <div class="field check"><label><input id="m-ic" type="checkbox" ${pre.ignore_case === false ? "" : "checked"}> Ignore case</label></div>
       <div class="field"><label for="m-cat">Category</label><select id="m-cat">${catOptions(pre.category_id, `<option value="new">+ New category…</option>`)}</select></div>
       <div id="m-newcat" hidden>
@@ -573,11 +579,11 @@
       if (!pattern.trim()) { box.innerHTML = "<div>Type a pattern to preview.</div>"; return; }
       const items = (state.summary ? state.summary.items : []).slice(0, 400);
       try {
-        const r = await api("/api/rules/test", "POST", { pattern, ignore_case: $("#m-ic").checked, texts: items.map(it => ({ app: it.app, title: it.title })) });
+        const r = await api("/api/rules/test", "POST", { pattern, ignore_case: $("#m-ic").checked, texts: items.map(it => ({ app: it.app, title: it.title, url: it.url || "" })) });
         if (!r.ok) { box.innerHTML = `<div style="color:var(--over)">${esc(r.error)}</div>`; return; }
         const hits = items.filter((it, i) => r.matches[i]);
         box.innerHTML = (hits.length ? `<div class="m" style="color:var(--muted)">${hits.length} of ${items.length} windows in this range</div>` : `<div>No window in this range matches.</div>`) +
-          hits.slice(0, 60).map(it => `<div class="m" title="${esc(it.title)}">${esc(it.title || "(no title)")} <span style="color:var(--muted)">${esc(it.app)} · ${fmt(it.seconds)}</span></div>`).join("");
+          hits.slice(0, 60).map(it => `<div class="m" title="${esc(it.title)}${it.url ? "\n" + esc(it.url) : ""}">${esc(it.title || "(no title)")} <span style="color:var(--muted)">${esc(it.app)}${it.url ? " · " + esc(it.url) : ""} · ${fmt(it.seconds)}</span></div>`).join("");
       } catch (e) { box.innerHTML = `<div style="color:var(--over)">${esc(e.message)}</div>`; }
     };
     $("#m-pattern").oninput = () => { clearTimeout(timer); timer = setTimeout(preview, 250); };
@@ -662,10 +668,10 @@
 
   async function itemEventsModal(it) {
     const s = state.summary;
-    const evs = await api(`/api/events?from=${s.range.start}&to=${s.range.end}&app=${encodeURIComponent(it.app)}&title=${encodeURIComponent(it.title)}`);
+    const evs = await api(`/api/events?from=${s.range.start}&to=${s.range.end}&app=${encodeURIComponent(it.app)}&title=${encodeURIComponent(it.title)}&url=${encodeURIComponent(it.url || "")}`);
     openModal(`
       <h2>${esc(it.title || "(no title)")}</h2>
-      <div class="meta"><div>${esc(it.app)} · ${fmt(it.seconds)} in ${evs.length} segment${evs.length === 1 ? "" : "s"}</div></div>
+      <div class="meta"><div>${esc(it.app)}${it.url ? " · " + esc(it.url) : ""} · ${fmt(it.seconds)} in ${evs.length} segment${evs.length === 1 ? "" : "s"}</div></div>
       <div class="preview" style="max-height:320px">${evs.map(e => `<div class="m" style="display:flex;gap:12px;align-items:center">
         <span style="flex:none;font-variant-numeric:tabular-nums">${fromIso(iso(new Date(e.start * 1000))).getDate() !== state.date.getDate() && state.range !== "day" ? iso(new Date(e.start * 1000)).slice(5) + " " : ""}${clock(e.start)} – ${clock(e.end)}</span>
         <span style="flex:none;color:var(--muted);font-variant-numeric:tabular-nums">${fmt(e.end - e.start)}</span>
@@ -716,11 +722,11 @@
 
   let tryTimer = null;
   async function tryTitle() {
-    const app = $("#try-app").value, title = $("#try-title").value;
+    const app = $("#try-app").value, title = $("#try-title").value, url = $("#try-url").value;
     const box = $("#try-result");
-    if (!app && !title) { box.textContent = "Type something above."; return; }
+    if (!app && !title && !url) { box.textContent = "Type something above."; return; }
     try {
-      const r = await api(`/api/categorize?app=${encodeURIComponent(app)}&title=${encodeURIComponent(title)}`);
+      const r = await api(`/api/categorize?app=${encodeURIComponent(app)}&title=${encodeURIComponent(title)}&url=${encodeURIComponent(url)}`);
       let how;
       if (r.source === "manual") how = "a manual choice from Review";
       else if (r.source === "default") how = "no rule matches, so it falls to the default";
@@ -797,13 +803,103 @@
     } catch (err) { msg.textContent = err.message; toast(err.message, true); }
   }
 
+  const clockS = ts => { const d = new Date(ts * 1000); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds()); };
+  const dateTime = ts => iso(new Date(ts * 1000)) + " " + clockS(ts);
+  const yesNo = v => v ? "yes" : "no";
+  function describeSource(src) {
+    if (src && src.startsWith("rule:")) {
+      const r = state.rules.find(x => x.id === Number(src.slice(5)));
+      return r ? `rule #${r.id} "${r.pattern}"${r.ignore_case ? " (ignore case)" : ""} → ${r.path}` : src;
+    }
+    return { manual: "manual choice on the Review page", block: "changed by hand for this segment", default: "no rule matched (Uncategorized)",
+             afk: "away", call: "microphone in use (call)", mixed: "mixed" }[src] || src;
+  }
+  async function copyText(text, ta) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) {
+      try { ta.focus(); ta.select(); return document.execCommand("copy"); } catch (e2) { return false; }
+    }
+  }
+  function infoModal(title, text) {
+    openModal(`<h2>${esc(title)}</h2>
+      <textarea id="info-text" class="info" readonly spellcheck="false">${esc(text)}</textarea>
+      <div class="actions"><span class="hint" id="info-msg"></span><button type="button" class="ghost" id="info-close">Close</button><button type="button" class="primary" id="info-copy">Copy</button></div>`);
+    const ta = $("#info-text");
+    const doCopy = async () => { const ok = await copyText(text, ta); $("#info-msg").textContent = ok ? "Copied to the clipboard" : "Select the text and press Ctrl+C"; };
+    $("#info-copy").onclick = doCopy;
+    $("#info-close").onclick = closeModal;
+    doCopy();
+  }
+  function segmentInfo(e) {
+    const lines = [
+      `TimeTracker segment #${e.id}`,
+      `Start: ${dateTime(e.start)}`,
+      `End: ${dateTime(e.end)}${e.live ? " (still running)" : ""}`,
+      `Duration: ${fmt(e.end - e.start)} (${Math.round(e.end - e.start)} s)`,
+      `App: ${e.app}`,
+      `Title: ${e.title || "(no title)"}`,
+      `Address: ${e.url || "(none)"}`,
+      `Category: ${e.category} (${KIND_LABEL[e.kind] || e.kind}, id ${e.category_id})`,
+      `Set by: ${describeSource(e.source)}`,
+      `Away: ${yesNo(e.afk)}   On a call: ${yesNo(e.call)}`,
+    ];
+    infoModal("Segment #" + e.id, lines.join("\n"));
+  }
+  async function windowInfo(it) {
+    const s = state.summary;
+    const evs = await api(`/api/events?from=${s.range.start}&to=${s.range.end}&app=${encodeURIComponent(it.app)}&title=${encodeURIComponent(it.title)}&url=${encodeURIComponent(it.url || "")}`);
+    const lines = [
+      `TimeTracker window`,
+      `Range: ${s.range.kind} ${s.range.first}${s.range.first !== s.range.last ? " to " + s.range.last : ""} (day starts ${s.range.day_start})`,
+      `App: ${it.app}`,
+      `Title: ${it.title || "(no title)"}`,
+      `Address: ${it.url || "(none)"}`,
+      `Category: ${it.category} (${KIND_LABEL[it.kind] || it.kind}, id ${it.category_id})`,
+      `Set by: ${describeSource(it.source)}`,
+      `Total: ${fmt(it.seconds)} (${Math.round(it.seconds)} s) in ${it.count} segment${it.count === 1 ? "" : "s"}`,
+      `First seen: ${dateTime(it.first)}   Last seen: ${dateTime(it.last)}`,
+      `Segments (${evs.length}):`,
+    ];
+    evs.slice(0, 200).forEach(e => lines.push(`  #${e.id}  ${dateTime(e.start)} – ${clockS(e.end)}  ${fmt(e.end - e.start)}  ${e.category}${e.source === "block" ? " (changed by hand)" : ""}`));
+    if (evs.length > 200) lines.push(`  … ${evs.length - 200} more`);
+    infoModal(it.title || it.app, lines.join("\n"));
+  }
+  const logState = { limit: 100, q: "" };
+  async function loadLog() {
+    state.log = await api(`/api/log?limit=${logState.limit}`);
+    renderLog();
+  }
+  function renderLog() {
+    const r = state.log;
+    if (!r || state.view !== "log") return;
+    const q = logState.q.trim().toLowerCase();
+    const evs = q ? r.events.filter(e => [e.title, e.app, e.url, e.category].some(x => (x || "").toLowerCase().includes(q))) : r.events;
+    const today = iso(new Date(r.now * 1000));
+    $("#log-empty").hidden = evs.length > 0;
+    $("#log-count").textContent = `${evs.length} of ${r.events.length} segments · refreshes every 5 seconds`;
+    $("#log-body").innerHTML = evs.map(e => {
+      const day = iso(new Date(e.start * 1000));
+      const dayTag = day !== today ? `<small class="day">${day.slice(5)}</small> ` : "";
+      return `<tr class="${e.live ? "cur" : ""}" data-id="${e.id}">
+        <td class="num">${dayTag}${clockS(e.start)}</td>
+        <td class="num">${e.live ? `<span class="now">now</span>` : clockS(e.end)}</td>
+        <td class="num">${fmt(e.end - e.start)}</td>
+        <td class="app" title="${esc(e.app)}">${esc(e.app)}</td>
+        <td class="title" title="${esc(e.title)}${e.url ? "\n" + esc(e.url) : ""}">${esc(e.title || "(no title)")}${e.url ? `<small class="url">${esc(e.url)}</small>` : ""}</td>
+        <td class="cat"><span class="kind-dot" style="background:${e.color}"></span>${esc(e.category)}${e.call ? ` <span class="tag">on a call</span>` : ""}</td>
+        <td class="src">${sourceTag(e.source)}</td>
+        <td class="act"><button class="tiny info" title="Show and copy everything about this segment">Info</button></td>
+      </tr>`;
+    }).join("");
+  }
+
   function setView(v) {
-    state.view = ["overview", "review", "rules", "settings"].includes(v) ? v : "overview";
+    state.view = ["overview", "review", "log", "rules", "settings"].includes(v) ? v : "overview";
     $$("#nav a").forEach(a => a.classList.toggle("on", a.dataset.view === state.view));
     $$(".view").forEach(m => { m.hidden = m.id !== "view-" + state.view; });
     $("#rangebar").hidden = !(state.view === "overview" || state.view === "review");
     if (state.view === "overview") { if (state.summary) renderOverview(); else loadSummary().catch(fail); }
     if (state.view === "review") { if (state.summary) renderReview(); else loadSummary().catch(fail); }
+    if (state.view === "log") loadLog().catch(fail);
     if (state.view === "rules") renderRules();
     if (state.view === "settings") renderSettings().catch(fail);
   }
@@ -885,12 +981,12 @@
     };
     $("#cat-list").addEventListener("click", e => {
       const row = e.target.closest(".cat-row");
-      if (row) toggleCat(row.dataset.path);
+      if (row) toggleCat(row.dataset.path, e.ctrlKey || e.metaKey);
     });
     $("#filter-bar").addEventListener("click", e => {
       if (e.target.closest("#filter-clear")) { catFilter.clear(); if (state.summary) { if (state.view === "overview") renderOverview(); else renderReview(); } renderFilterBar(); return; }
       const chip = e.target.closest(".chip");
-      if (chip) toggleCat(chip.dataset.path);
+      if (chip) toggleCat(chip.dataset.path, true);
     });
     const cols = $("#columns");
     cols.addEventListener("mousemove", e => {
@@ -940,7 +1036,7 @@
       if (!tr) return;
       const it = rvBody._rows[tr.dataset.i];
       if (e.target.closest(".mk-rule")) {
-        const pattern = state.rv.group === "app" ? "^" + escRe(it.app) + "$" : escRe(it.title);
+        const pattern = state.rv.group === "app" ? "^" + escRe(it.app) + "$" : it.url ? escRe(it.url.split("/")[0]) : escRe(it.title);
         ruleModal({ pattern, category_id: it.category_id });
       } else if (e.target.closest(".clr")) {
         api("/api/overrides", "POST", { app: it.app, title: it.title, category_id: null }).then(() => { toast("Manual choice removed"); return afterRuleChange(); }).catch(fail);
@@ -951,7 +1047,7 @@
 
     $("#add-rule").onclick = () => ruleModal();
     $("#add-cat").onclick = () => categoryModal();
-    $("#try-app").oninput = $("#try-title").oninput = () => { clearTimeout(tryTimer); tryTimer = setTimeout(tryTitle, 200); };
+    $("#try-app").oninput = $("#try-title").oninput = $("#try-url").oninput = () => { clearTimeout(tryTimer); tryTimer = setTimeout(tryTitle, 200); };
     const rulesBody = $("#rules-body");
     rulesBody.addEventListener("click", async e => {
       const tr = e.target.closest("tr");
@@ -1030,6 +1126,21 @@
     };
     setInterval(refreshStatus, 5000);
     setInterval(refreshCurrent, 30000);
+    setInterval(() => { if (state.view === "log" && document.visibilityState === "visible") loadLog().catch(() => {}); }, 5000);
+    $("#log-limit").onchange = () => { logState.limit = Number($("#log-limit").value) || 100; loadLog().catch(fail); };
+    $("#log-body").addEventListener("click", e => {
+      const btn = e.target.closest(".info"), tr = e.target.closest("tr");
+      if (!btn || !tr || !state.log) return;
+      const ev = state.log.events.find(x => x.id === Number(tr.dataset.id));
+      if (ev) segmentInfo(ev);
+    });
+    $("#top-items").addEventListener("click", e => {
+      const btn = e.target.closest(".info"), row = e.target.closest(".item-row");
+      if (!btn || !row) return;
+      const it = ($("#top-items")._items || [])[row.dataset.i];
+      if (it) windowInfo(it).catch(fail);
+    });
+    $("#log-search").oninput = () => { logState.q = $("#log-search").value; renderLog(); };
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") { refreshStatus(); refreshCurrent(); }
     });

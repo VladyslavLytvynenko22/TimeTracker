@@ -3,6 +3,7 @@ import ctypes.wintypes as w
 import math
 import os
 import struct
+import threading
 
 user32 = ctypes.WinDLL("user32", use_last_error=True)
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -68,6 +69,29 @@ def window_title(hwnd):
     return buf.value
 
 
+user32.GetClassNameW.argtypes = [w.HWND, w.LPWSTR, ctypes.c_int]
+SHELL_CLASSES = {
+    "Shell_TrayWnd": "Taskbar", "Shell_SecondaryTrayWnd": "Taskbar", "Progman": "Desktop", "WorkerW": "Desktop",
+    "ApplicationManager_DesktopShellWindow": "Desktop",
+    "XamlExplorerHostIslandWindow": "Task switcher", "XamlExplorerHostIslandWindow_WASDK": "Task switcher", "TaskSwitcherWnd": "Task switcher", "MultitaskingViewFrame": "Task view",
+    "NotifyIconOverflowWindow": "Tray overflow", "TopLevelWindowForOverflowXamlIsland": "Tray overflow",
+    "Windows.UI.Core.CoreWindow": "System overlay", "ForegroundStaging": "Window switch",
+}
+
+
+def window_class(hwnd):
+    buf = ctypes.create_unicode_buffer(256)
+    user32.GetClassNameW(hwnd, buf, 256)
+    return buf.value
+
+
+def untitled_label(hwnd):
+    cls = window_class(hwnd)
+    if not cls:
+        return ""
+    return SHELL_CLASSES.get(cls) or "(%s)" % cls
+
+
 def window_pid(hwnd):
     pid = w.DWORD(0)
     user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
@@ -98,7 +122,8 @@ def foreground():
         real = uwp_child_pid(hwnd, pid)
         if real:
             exe = process_name(real) or exe
-    return exe, window_title(hwnd), hwnd
+    title = window_title(hwnd) or untitled_label(hwnd)
+    return exe, title, hwnd
 
 
 oleacc = ctypes.WinDLL("oleacc", use_last_error=True)
@@ -158,6 +183,80 @@ def accessible_name(hwnd):
         if bstr:
             oleaut32.SysFreeString(bstr)
         release(p)
+
+
+CLSID_CUIAutomation = _guid("FF48DBA4-60EF-4201-AA87-54103EEF594E")
+IID_IUIAutomation = _guid("30CBE57D-D9D0-452A-AB13-7AC5AC4825EE")
+CLSCTX_INPROC_SERVER = 1
+TreeScope_Descendants = 4
+UIA_ControlTypePropertyId = 30003
+UIA_ValueValuePropertyId = 30045
+UIA_EditControlTypeId = 50004
+VT_BSTR = 8
+ole32.CoCreateInstance.argtypes = [ctypes.POINTER(GUID), ctypes.c_void_p, w.DWORD, ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_void_p)]
+oleaut32.VariantClear.argtypes = [ctypes.POINTER(VARIANT)]
+_ElementFromHandle = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, w.HWND, ctypes.POINTER(ctypes.c_void_p))
+_CreatePropertyCondition = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_int, VARIANT, ctypes.POINTER(ctypes.c_void_p))
+_FindFirst = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p))
+_GetCurrentPropertyValue = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(VARIANT))
+_uia_local = threading.local()
+
+
+def _method(p, index):
+    return ctypes.cast(ctypes.cast(p, ctypes.POINTER(ctypes.c_void_p))[0], ctypes.POINTER(ctypes.c_void_p))[index]
+
+
+def _release(p):
+    if p:
+        _Release(_method(p, 2))(p)
+
+
+def _automation():
+    st = _uia_local
+    if getattr(st, "uia", None) is None:
+        st.uia = False
+        st.edit_cond = None
+        uia = ctypes.c_void_p()
+        hr = ole32.CoCreateInstance(ctypes.byref(CLSID_CUIAutomation), None, CLSCTX_INPROC_SERVER,
+                                    ctypes.byref(IID_IUIAutomation), ctypes.byref(uia))
+        if hr != 0 or not uia:
+            return None, None
+        v = VARIANT()
+        v.vt = VT_I4
+        v.lVal = UIA_EditControlTypeId
+        cond = ctypes.c_void_p()
+        hr = _CreatePropertyCondition(_method(uia, 23))(uia, UIA_ControlTypePropertyId, v, ctypes.byref(cond))
+        if hr != 0 or not cond:
+            _release(uia)
+            return None, None
+        st.uia, st.edit_cond = uia, cond
+    return (st.uia, st.edit_cond) if st.uia else (None, None)
+
+
+def browser_url(hwnd):
+    uia, cond = _automation()
+    if not uia:
+        return ""
+    el = ctypes.c_void_p()
+    if _ElementFromHandle(_method(uia, 6))(uia, hwnd, ctypes.byref(el)) != 0 or not el:
+        return ""
+    try:
+        found = ctypes.c_void_p()
+        if _FindFirst(_method(el, 5))(el, TreeScope_Descendants, cond, ctypes.byref(found)) != 0 or not found:
+            return ""
+        try:
+            v = VARIANT()
+            hr = _GetCurrentPropertyValue(_method(found, 10))(found, UIA_ValueValuePropertyId, ctypes.byref(v))
+            try:
+                if hr == 0 and v.vt == VT_BSTR and v.lVal:
+                    return ctypes.wstring_at(v.lVal)
+                return ""
+            finally:
+                oleaut32.VariantClear(ctypes.byref(v))
+        finally:
+            _release(found)
+    finally:
+        _release(el)
 
 
 def is_locked():

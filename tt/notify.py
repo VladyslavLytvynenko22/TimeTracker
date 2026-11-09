@@ -39,17 +39,25 @@ class Notifier:
         return False
 
     def _toast(self, title, body):
-        xml = ('<toast activationType="protocol" launch="%s" duration="short">'
+        url = escape(self.url, {'"': "&quot;"})
+        xml = ('<toast activationType="protocol" launch="%s" scenario="reminder">'
                '<visual><binding template="ToastGeneric"><text>%s</text><text>%s</text></binding></visual>'
-               '<audio src="ms-winsoundevent:Notification.Default"/></toast>') % (escape(self.url), escape(title), escape(body))
+               '<actions>'
+               '<action content="Open dashboard" activationType="protocol" arguments="%s"/>'
+               '<action content="Close" activationType="system" arguments="dismiss"/>'
+               '</actions>'
+               '<audio src="ms-winsoundevent:Notification.Default"/></toast>') % (url, escape(title), escape(body), url)
         script = (
             "$null = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]\n"
             "$null = [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]\n"
             "$x = New-Object Windows.Data.Xml.Dom.XmlDocument\n"
             "$x.LoadXml('%s')\n"
             "$t = [Windows.UI.Notifications.ToastNotification]::new($x)\n"
+            "$t.Tag = 'tt'\n"
+            "$t.Group = 'tt'\n"
+            "try { [Windows.UI.Notifications.ToastNotificationManager]::History.Clear('%s') } catch {}\n"
             "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('%s').Show($t)\n"
-        ) % (xml.replace("'", "''"), AUMID)
+        ) % (xml.replace("'", "''"), AUMID, AUMID)
         encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
         try:
             si = subprocess.STARTUPINFO()

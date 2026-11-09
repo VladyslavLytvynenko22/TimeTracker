@@ -45,10 +45,11 @@ class App:
         s = self.settings()
         st = dict(self.tracker.status)
         cur = self.tracker.current_event()
-        c, source = self.cat.categorize(st["app"], st["title"], st["afk"], cur["id"] if cur else None, cur["call"] if cur else False)
+        c, source = self.cat.categorize(st["app"], st["title"], st["afk"], cur["id"] if cur else None,
+                                        cur["call"] if cur else False, st.get("url", ""))
         day, work = summ.work_seconds_today(self.db, self.cat, s["day_start"])
         return {
-            "app": st["app"], "title": st["title"], "afk": st["afk"], "idle": st["idle"], "paused": self.tracker.paused,
+            "app": st["app"], "title": st["title"], "url": st.get("url", ""), "afk": st["afk"], "idle": st["idle"], "paused": self.tracker.paused,
             "skipped": bool(st.get("skipped")), "media": bool(st.get("media")),
             "call": bool(st.get("call")), "call_apps": st.get("call_apps") or [],
             "since": cur["start"] if cur else None, "category": c.path, "kind": c.kind, "source": source,
@@ -98,15 +99,15 @@ class App:
                 wr.writerow([day["date"], hms(day["work"]), hms(day["nonwork"]), hms(day["afk"]),
                              round(day["work"] / 3600, 2), round(day["nonwork"] / 3600, 2), round(day["afk"] / 3600, 2), top])
         elif mode == "segments":
-            wr.writerow(["start", "end", "duration", "seconds", "app", "title", "category", "kind", "set_by", "on_call"])
+            wr.writerow(["start", "end", "duration", "seconds", "app", "title", "url", "category", "kind", "set_by", "on_call"])
             for sg in summ.segments(self.db, self.cat, kind, d, s["day_start"]):
                 wr.writerow([fmt_ts(sg["start"]), fmt_ts(sg["end"]), hms(sg["end"] - sg["start"]), int(sg["end"] - sg["start"]),
-                             sg["app"], sg["title"], sg["category"], sg["kind"], sg["source"], "yes" if sg["call"] else ""])
+                             sg["app"], sg["title"], sg["url"], sg["category"], sg["kind"], sg["source"], "yes" if sg["call"] else ""])
         else:
             res = summ.compute(self.db, self.cat, kind, d, s["day_start"], s["work_target_min"], s.get("workdays", [0, 1, 2, 3, 4]))
-            wr.writerow(["app", "title", "category", "kind", "duration", "seconds", "segments", "first_seen", "last_seen", "set_by"])
+            wr.writerow(["app", "title", "url", "category", "kind", "duration", "seconds", "segments", "first_seen", "last_seen", "set_by"])
             for it in sorted(res["items"], key=lambda x: -x["seconds"]):
-                wr.writerow([it["app"], it["title"], it["category"], it["kind"], hms(it["seconds"]), int(it["seconds"]),
+                wr.writerow([it["app"], it["title"], it["url"], it["category"], it["kind"], hms(it["seconds"]), int(it["seconds"]),
                              it["count"], fmt_ts(it["first"]), fmt_ts(it["last"]), it["source"]])
         name = "timetracker-%s-%s-%s.csv" % (kind, d.isoformat(), mode)
         return name, ("﻿" + buf.getvalue()).encode("utf-8")
@@ -119,15 +120,32 @@ class App:
             raise ApiError("from/to required")
         app = q.get("app", "")
         title = q.get("title")
+        url = q.get("url")
         rows = self.db.events_overlapping(start, end)
         out = []
         for r in rows:
-            if r["app"] != app or (title is not None and r["title"] != title):
+            if r["app"] != app or (title is not None and r["title"] != title) or (url is not None and (r.get("url") or "") != url):
                 continue
-            c, source = self.cat.categorize(r["app"], r["title"], r["afk"], r["id"], r.get("call"))
+            c, source = self.cat.categorize(r["app"], r["title"], r["afk"], r["id"], r.get("call"), r.get("url"))
             out.append({"id": r["id"], "start": max(r["start"], start), "end": min(r["end"], end), "title": r["title"],
-                        "category_id": c.id, "category": c.path, "kind": c.kind, "source": source})
+                        "url": r.get("url") or "", "category_id": c.id, "category": c.path, "kind": c.kind, "source": source})
         return out[:2000]
+
+    def log(self, q):
+        try:
+            limit = max(1, min(1000, int(q.get("limit", 100))))
+        except ValueError:
+            limit = 100
+        cur = self.tracker.current_event()
+        now = time.time()
+        out = []
+        for r in self.db.recent_events(limit):
+            c, source = self.cat.categorize(r["app"], r["title"], r["afk"], r["id"], r.get("call"), r.get("url"))
+            live = bool(cur and cur["id"] == r["id"])
+            out.append({"id": r["id"], "start": r["start"], "end": now if live else r["end"], "app": r["app"], "title": r["title"],
+                        "url": r.get("url") or "", "afk": bool(r["afk"]), "call": bool(r.get("call")), "live": live,
+                        "category_id": c.id, "category": c.path, "kind": c.kind, "color": c.color, "source": source})
+        return {"now": now, "events": out}
 
     def save_category(self, body):
         path = " > ".join(p.strip() for p in str(body.get("path", "")).split(">") if p.strip())
@@ -227,7 +245,8 @@ class App:
         except re.error as e:
             return {"ok": False, "error": str(e)}
         texts = body.get("texts") or []
-        return {"ok": True, "matches": [bool(rx.search(t.get("title", "")) or rx.search(t.get("app", ""))) for t in texts]}
+        return {"ok": True, "matches": [bool(rx.search(t.get("title", "")) or rx.search(t.get("app", "")) or rx.search(t.get("url") or ""))
+                                        for t in texts]}
 
     def save_override(self, body):
         app = body.get("app", "")
@@ -413,6 +432,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(app.summary(q))
             if p == "/api/events":
                 return self._json(app.item_events(q))
+            if p == "/api/log":
+                return self._json(app.log(q))
             if p == "/api/export.csv":
                 name, data = app.export_csv(q)
                 self.send_response(200)
@@ -424,7 +445,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 return
             if p == "/api/categorize":
-                c, source = app.cat.categorize(q.get("app", ""), q.get("title", ""), False)
+                c, source = app.cat.categorize(q.get("app", ""), q.get("title", ""), False, url=q.get("url", ""))
                 return self._json({"category": c.path, "category_id": c.id, "kind": c.kind, "source": source})
             if p == "/api/categories":
                 return self._json([{**c, "color": c["color"] or KIND_COLORS[c["kind"]], "protected": c["path"] in PROTECTED_CATEGORIES}

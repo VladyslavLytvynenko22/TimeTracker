@@ -94,7 +94,7 @@ def work_between(db, cat, start, end):
         e = min(r["end"], end)
         if e <= s:
             continue
-        c, _ = cat.categorize(r["app"], r["title"], r["afk"], r["id"], r.get("call"))
+        c, _ = cat.categorize(r["app"], r["title"], r["afk"], r["id"], r.get("call"), r.get("url"))
         if c.kind == "work":
             total += e - s
     return total
@@ -144,7 +144,7 @@ def compute(db, cat, kind, d, day_start, target_min, workdays=(0, 1, 2, 3, 4), n
         sleep += (re_ - rs) - sum(pe - ps for ps, pe in pieces)
         if not pieces:
             continue
-        c, source = cat.categorize(r["app"], r["title"], r["afk"], r["id"], r.get("call"))
+        c, source = cat.categorize(r["app"], r["title"], r["afk"], r["id"], r.get("call"), r.get("url"))
         for s, e in pieces:
             dur = e - s
             tracked += dur
@@ -155,10 +155,11 @@ def compute(db, cat, kind, d, day_start, target_min, workdays=(0, 1, 2, 3, 4), n
                     dc = day_cats[dd]
                     dc[c.id] = dc.get(c.id, 0.0) + (ee - ss)
             categories[c.id] = categories.get(c.id, 0.0) + dur
-            key = (r["app"], r["title"])
+            url = r.get("url") or ""
+            key = (r["app"], r["title"], url)
             it = items.get(key)
             if it is None:
-                it = {"app": r["app"], "title": r["title"], "seconds": 0.0, "count": 0,
+                it = {"app": r["app"], "title": r["title"], "url": url, "seconds": 0.0, "count": 0,
                       "category_id": c.id, "category": c.path, "kind": c.kind, "source": source, "first": s, "last": e}
                 items[key] = it
             it["seconds"] += dur
@@ -222,9 +223,9 @@ def segments(db, cat, kind, d, day_start):
         e = min(r["end"], end)
         if e <= s:
             continue
-        c, source = cat.categorize(r["app"], r["title"], r["afk"], r["id"], r.get("call"))
-        out.append({"start": s, "end": e, "app": r["app"], "title": r["title"], "category": c.path, "kind": c.kind,
-                    "source": source, "call": bool(r.get("call"))})
+        c, source = cat.categorize(r["app"], r["title"], r["afk"], r["id"], r.get("call"), r.get("url"))
+        out.append({"start": s, "end": e, "app": r["app"], "title": r["title"], "url": r.get("url") or "",
+                    "category": c.path, "kind": c.kind, "source": source, "call": bool(r.get("call"))})
     return out
 
 
@@ -238,7 +239,7 @@ def work_seconds_today(db, cat, day_start, now=None):
         e = min(r["end"], min(end, now))
         if e <= s:
             continue
-        c, _ = cat.categorize(r["app"], r["title"], r["afk"], r["id"], r.get("call"))
+        c, _ = cat.categorize(r["app"], r["title"], r["afk"], r["id"], r.get("call"), r.get("url"))
         if c.kind == "work":
             total += e - s
     return d, total

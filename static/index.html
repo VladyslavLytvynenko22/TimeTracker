@@ -16,6 +16,7 @@
   <nav class="tabs" id="nav">
     <a href="#overview" data-view="overview">Overview</a>
     <a href="#review" data-view="review">Review</a>
+    <a href="#log" data-view="log">Log</a>
     <a href="#rules" data-view="rules">Rules</a>
     <a href="#settings" data-view="settings">Settings</a>
   </nav>
@@ -97,7 +98,7 @@
 <main id="view-review" class="view" hidden>
   <section class="card">
     <div class="toolbar">
-      <input id="rv-search" type="search" placeholder="Filter by app or window title" autocomplete="off">
+      <input id="rv-search" type="search" placeholder="Filter by app, window title or address" autocomplete="off">
       <div class="seg small" id="rv-kind">
         <button data-kind="" class="on">All</button>
         <button data-kind="work">Work</button>
@@ -123,12 +124,30 @@
   </section>
 </main>
 
+<main id="view-log" class="view" hidden>
+  <section class="card">
+    <div class="toolbar">
+      <input id="log-search" type="search" placeholder="Filter by app, window title, address or category" autocomplete="off">
+      <label class="minlabel">last <select id="log-limit" class="short"><option>50</option><option selected>100</option><option>200</option><option>500</option><option>1000</option></select> segments</label>
+      <span class="hint" id="log-count">Refreshes every 5 seconds</span>
+    </div>
+    <div class="table-wrap">
+      <table class="items" id="log-table">
+        <thead><tr><th class="num">Start</th><th class="num">End</th><th class="num">Duration</th><th>App</th><th>Window title</th><th>Category</th><th>Set by</th><th></th></tr></thead>
+        <tbody id="log-body"></tbody>
+      </table>
+    </div>
+    <p class="empty" id="log-empty" hidden>Nothing tracked yet.</p>
+  </section>
+</main>
+
 <main id="view-rules" class="view" hidden>
   <section class="card">
     <div class="card-head"><h2>Try a window title</h2><span class="hint">See which rule would catch it</span></div>
     <div class="toolbar">
       <input id="try-app" type="text" placeholder="App, e.g. chrome.exe" autocomplete="off">
       <input id="try-title" type="text" placeholder="Window title, e.g. Naruto episode 12 - Google Chrome" autocomplete="off" class="grow">
+      <input id="try-url" type="text" placeholder="Page address, e.g. portal.nowcerts.com/Dashboard" autocomplete="off" class="grow">
     </div>
     <div class="try-result" id="try-result">Type something above.</div>
   </section>

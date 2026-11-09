@@ -35,8 +35,20 @@ To stop it and remove the autostart: `.\uninstall.ps1` (your data stays in `data
   the time is counted as *Work > Chat & Calls* regardless of what is on screen (Settings → calls).
 - **Incognito / InPrivate windows** are detected through the window's accessibility name; by default the
   time is recorded with the title hidden ("Private window") under the *Private browsing* category.
+- **Windows without a title** (the taskbar, the desktop, the Alt+Tab switcher, which all belong to
+  `explorer.exe`) are labelled by what they are: "Taskbar", "Desktop", "Task switcher". Anything else without
+  a title shows its window class in brackets. Those, the Windows restart and security prompts, the Start
+  menu and search hosts, and windows whose process could not be read ("unknown") go to *Work > System*.
+- **Page addresses**: for browser windows (Chrome, Edge and the other Chromium browsers) the address bar is
+  read through Windows UI Automation and saved with the segment, without the query string and fragment.
+  It is read again two seconds later, so a tab switch where the title changes before the address does not
+  leave the previous page's address on the new segment.
+  The Review page lists a window once per address and shows it under the title, the CSV exports have a
+  `url` column, and nothing is read for private windows.
 - Everything else goes through the rules on the *Rules* page, top to bottom. The first regular expression
-  that matches the window title or the app name wins. Each category counts as work, not work or away.
+  that matches the window title, the page address or the app name wins. Each category counts as work, not
+  work or away. A rule such as `portal\.nowcerts\.com` therefore catches every tab on that site, whatever
+  its title.
   Windows that match no rule go to **Uncategorized** (magenta, counts as not work). Use the *Needs a rule*
   filter on the Review page to find the biggest uncategorized windows and give them a rule.
 - On the *Review* page you can change the category of any window by hand (this beats the rules), click a
@@ -59,7 +71,8 @@ Settings page:
 - weekly summary toast (Friday 18:00 by default): hours worked against the week target, not-work time and
   the top three work categories
 
-Toasts show as "TimeTracker" and clicking one opens the dashboard.
+Toasts show as "TimeTracker" and stay on screen until you press **Close** or **Open dashboard**, so they
+are not missed on a second monitor. Windows always shows them on the main display.
 
 ## Targets, day boundary, export
 
@@ -74,6 +87,11 @@ Away time between the day start and the first activity of a day counts as sleep 
 Away total and the timeline. Parent categories that only group others (such as "Work") are hidden from
 the pickers.
 
+The *Log* page lists the latest segments newest first, with start, end, duration, window, address and
+category, and refreshes itself every few seconds; the segment being tracked right now sits on top with a
+running end time. The **Info** button on a Log row or a Top windows row opens everything known about that
+segment or window as plain text and copies it to the clipboard, ready to paste into an issue.
+
 The Week and Month charts can be switched to "By category" (top 7 categories stacked, the rest as Other).
 "Export CSV" in the range bar downloads the current range as windows, per-day totals, or every segment.
 
@@ -86,7 +104,9 @@ The Week and Month charts can be switched to "By category" (top 7 categories sta
 | Dashboard | <http://127.0.0.1:48411/> (change the port in Settings, restart to apply) |
 | Startup shortcut | `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\TimeTracker.lnk` |
 
-Keyboard: ← / → move the day, week or month on the Overview and Review pages.
+Keyboard: ← / → move the day, week or month on the Overview and Review pages. Clicking a category in the
+Overview list filters everything to it; Ctrl+click adds more categories to the filter, and clicking the
+selected one again clears it.
 
 Environment overrides for testing: `TT_DATA_DIR` (data folder) and `TT_PORT`.
 

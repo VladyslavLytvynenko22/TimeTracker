@@ -58,7 +58,7 @@ class Categorizer:
     def category(self, cat_id):
         return self.cats.get(cat_id)
 
-    def categorize(self, app, title, afk, event_id=None, call=False):
+    def categorize(self, app, title, afk, event_id=None, call=False, url=""):
         if event_id is not None:
             cid = self.event_overrides.get(event_id)
             if cid in self.cats:
@@ -67,17 +67,18 @@ class Categorizer:
             return self.afk, "afk"
         if call and self.call_cat is not None:
             return self.call_cat, "call"
-        key = (app, title)
+        url = url or ""
+        key = (app, title, url)
         hit = self.cache.get(key)
         if hit is not None:
             return hit
-        cid = self.overrides.get(key)
+        cid = self.overrides.get((app, title))
         if cid in self.cats:
             res = (self.cats[cid], "manual")
         else:
             res = None
             for rx, rcid, rid in self.rules:
-                if rx.search(title) or rx.search(app):
+                if rx.search(title) or rx.search(app) or (url and rx.search(url)):
                     cat = self.cats.get(rcid)
                     if cat:
                         res = (cat, "rule:%d" % rid)

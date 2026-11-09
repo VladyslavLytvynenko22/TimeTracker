@@ -12,6 +12,18 @@ from datetime import datetime
 
 PRIVATE_RX = re.compile(r"\(Incognito\)|InPrivate|Private Browsing", re.IGNORECASE)
 BROWSERS = {"chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "vivaldi.exe", "chromium.exe"}
+HOST_RX = re.compile(r"^(?:(?:[\w-]+\.)+[a-z0-9-]+|localhost)(?::\d+)?(?:/|$)", re.IGNORECASE)
+URL_RECHECK_SECONDS = 5
+URL_CONFIRM_SECONDS = 2
+
+
+def clean_url(url):
+    url = (url or "").strip()
+    if not url or len(url) > 2048 or re.search(r"\s", url):
+        return ""
+    if "://" not in url and not HOST_RX.match(url):
+        return ""
+    return url.split("#", 1)[0].split("?", 1)[0]
 
 
 class PrivateWindowDetector:
@@ -84,6 +96,7 @@ class Tracker(threading.Thread):
         self.lock = threading.Lock()
         self.private = PrivateWindowDetector()
         self.last_media_seen = 0.0
+        self.url_failed = False
 
     def reload_settings(self):
         self.settings = self.db.get_settings()
@@ -150,6 +163,7 @@ class Tracker(threading.Thread):
         if self.last_media_seen:
             idle = min(idle, now - self.last_media_seen)
 
+        url_hwnd = 0
         if locked or exe == LOCK_APP or title == LOCK_TITLE:
             sample = (LOCK_APP, LOCK_TITLE, True, False)
             self.idle_marked = False
@@ -167,13 +181,16 @@ class Tracker(threading.Thread):
             self.idle_marked = False
             title = clean_title(title or "")
             mode = self.settings.get("private_windows", "hide")
+            if (exe or "").lower() in BROWSERS:
+                url_hwnd = hwnd
             if mode != "track" and self.private.is_private(exe or "", title, hwnd):
                 if mode == "skip":
                     self._close_current(now)
                     with self.lock:
-                        self.status.update({"app": exe or "unknown", "title": PRIVATE_TITLE, "afk": False, "idle": idle, "skipped": True})
+                        self.status.update({"app": exe or "unknown", "title": PRIVATE_TITLE, "url": "", "afk": False, "idle": idle, "skipped": True})
                     return
                 title = PRIVATE_TITLE
+                url_hwnd = 0
             sample = (exe or "unknown", title, False, bool(call_apps))
 
         with self.lock:
@@ -185,12 +202,25 @@ class Tracker(threading.Thread):
         cur = self.cur
         if cur and (cur["app"], cur["title"], cur["afk"], cur["call"]) == sample:
             cur["end"] = now
+            if url_hwnd and not cur["url"] and now - cur["url_checked"] >= URL_RECHECK_SECONDS:
+                cur["url_checked"] = now
+                url = self._url(url_hwnd)
+                if url:
+                    cur["url"] = url
+                    self.db.update_event_url(cur["id"], url)
+            elif url_hwnd and cur["url"] and not cur["url_confirmed"] and now - cur["start"] >= URL_CONFIRM_SECONDS:
+                cur["url_confirmed"] = True
+                url = self._url(url_hwnd)
+                if url and url != cur["url"]:
+                    cur["url"] = url
+                    self.db.update_event_url(cur["id"], url)
             if now - cur["flushed"] >= 10:
                 self.db.update_event_end(cur["id"], now)
                 cur["flushed"] = now
         else:
             self._close_current(now)
-            self._open(now, *sample)
+            self._open(now, *sample, url=self._url(url_hwnd) if url_hwnd else "")
+        self.status["url"] = self.cur["url"] if self.cur else ""
 
         if now - self.last_notif_check >= 60:
             self.last_notif_check = now
@@ -199,9 +229,19 @@ class Tracker(threading.Thread):
             except Exception:
                 log.exception("notification check failed")
 
-    def _open(self, start, app, title, afk, call=False):
-        eid = self.db.insert_event(start, start, app, title, afk, call)
-        self.cur = {"id": eid, "start": start, "end": start, "app": app, "title": title, "afk": afk, "call": call, "flushed": start}
+    def _url(self, hwnd):
+        try:
+            return clean_url(win.browser_url(hwnd))
+        except Exception:
+            if not self.url_failed:
+                self.url_failed = True
+                log.exception("reading the browser address bar failed")
+            return ""
+
+    def _open(self, start, app, title, afk, call=False, url=""):
+        eid = self.db.insert_event(start, start, app, title, afk, call, url)
+        self.cur = {"id": eid, "start": start, "end": start, "app": app, "title": title, "afk": afk, "call": call,
+                    "url": url, "url_checked": start, "url_confirmed": False, "flushed": start}
         self.status["since"] = start
 
     def _close_current(self, end):
